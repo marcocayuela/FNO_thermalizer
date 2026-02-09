@@ -18,11 +18,11 @@ class Diffusion(nn.Module):
         alphas = 1. - betas
         alphas_cumprod = torch.cumprod(alphas, dim=-1)
 
-        self.register_buffer("betas",betas)
-        self.register_buffer("alphas",alphas)
-        self.register_buffer("alphas_cumprod",alphas_cumprod)
-        self.register_buffer("sqrt_alphas_cumprod",torch.sqrt(alphas_cumprod))
-        self.register_buffer("sqrt_one_minus_alphas_cumprod",torch.sqrt(1.-alphas_cumprod))
+        self.register_buffer("betas",betas.to(self.model.device))
+        self.register_buffer("alphas",alphas.to(self.model.device))
+        self.register_buffer("alphas_cumprod",alphas_cumprod.to(self.model.device))
+        self.register_buffer("sqrt_alphas_cumprod",torch.sqrt(alphas_cumprod).to(self.model.device))
+        self.register_buffer("sqrt_one_minus_alphas_cumprod",torch.sqrt(1.-alphas_cumprod).to(self.model.device))
 
     
     def forward(self, x, noise, predict_noise_level=False):
