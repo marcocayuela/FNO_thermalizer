@@ -16,6 +16,6 @@ rsync -av $STORE/data/kolmogorov/ $SCRATCH/data/kolmogorov
 export DATA_DIR=$SCRATCH/data/
 export LOG_DIR=$SCRATCH/fno/runs/
 
-python main.py 
+python main_diff.py 
 source deactivate
 
