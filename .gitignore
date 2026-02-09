@@ -1,0 +1,7 @@
+data/**
+!data/**/
+
+runs/
+runs_mesu/
+
+
