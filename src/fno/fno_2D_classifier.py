@@ -134,7 +134,7 @@ class FNO2D_classifier(nn.Module):
             x = x[..., :-self.padding, :-self.padding]
 
         x = self.classifier(x)
-        x = nn.Softmax(x)
+        x = nn.Softmax(-1)(x)
         return x
     
     def classifier_cat(self, x: torch.Tensor):

@@ -68,7 +68,39 @@ class Diffusion(nn.Module):
         #q(x_{t}|x_{0})
         return self.sqrt_alphas_cumprod.gather(-1,t).reshape(x_0.shape[0],1,1,1)*x_0+ \
                 self.sqrt_one_minus_alphas_cumprod.gather(-1,t).reshape(x_0.shape[0],1,1,1)*noise
+
+    def sampling(self, n_samples, resolution, device="cpu"):
+        """ Generate fresh samples from pure noise """
+        x_t=torch.randn((n_samples, resolution, resolution,self.model.output_dim)).to(device)
+
+        for i in tqdm(range(self.timesteps-1,-1,-1),desc="Sampling"):
+            noise=torch.randn_like(x_t).to(device)
+            t=torch.tensor([i for _ in range(n_samples)], dtype=torch.long).to(device)
+            x_t=self._reverse_diffusion(x_t,t,noise)
+        return x_t
     
+    
+    def _reverse_diffusion(self, x_t, t, noise):
+        '''
+        p(x_{t-1}|x_{t})-> mean,std
+
+        pred_noise-> pred_mean and pred_std
+        '''
+        pred= self.model(x_t, predict_class=False)
+
+        alpha_t=self.alphas.gather(-1,t).reshape(x_t.shape[0],1,1,1)
+        alpha_t_cumprod=self.alphas_cumprod.gather(-1,t).reshape(x_t.shape[0],1,1,1)
+        beta_t=self.betas.gather(-1,t).reshape(x_t.shape[0],1,1,1)
+        sqrt_one_minus_alpha_cumprod_t=self.sqrt_one_minus_alphas_cumprod.gather(-1,t).reshape(x_t.shape[0],1,1,1)
+        mean=(1./torch.sqrt(alpha_t))*(x_t-((1.0-alpha_t)/sqrt_one_minus_alpha_cumprod_t)*pred)
+
+        if t.min()>0:
+            alpha_t_cumprod_prev=self.alphas_cumprod.gather(-1,t-1).reshape(x_t.shape[0],1,1,1)
+            std=torch.sqrt(beta_t*(1.-alpha_t_cumprod_prev)/(1.-alpha_t_cumprod))
+        else:
+            std=0.0
+
+        return mean+std*noise 
 
     
     def _cosine_variance_schedule(self,timesteps,epsilon= 0.008):

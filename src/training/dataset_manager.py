@@ -89,8 +89,9 @@ class DatasetManagerMulti():
         else:
             self.ratio = ratio  
 
-        if self.exp_dir == "kolmogorov/Re34":
-            data_dir = os.path.join(data_rep,'kolmogorov/Re34/train_traj')
+        if self.exp_dir == "kolmogorov/Re34" or self.exp_dir == "kolmogorov/Re90":
+
+            data_dir = os.path.join(data_rep, self.exp_dir, "train_traj")
 
             simulation_files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith(".h5")]
             
