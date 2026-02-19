@@ -53,3 +53,5 @@ def energy_spectrum(velocity_field):
         E_k[i] = np.sum(E_hat[mask])
 
     return E_k, np.arange(k_max+1)
+
+

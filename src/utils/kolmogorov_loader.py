@@ -44,7 +44,7 @@ def load_multiple_simulation(data_rep, time_ds=1, space_ds=1, list=None):
     return np.stack(simulation_velocities, axis=0)
 
 
-def get_info(data_path, print=True):
+def get_info(data_path, print_info=True):
 
     '''
     Get the info and hyperparameters used for a kolmogorov simulation
@@ -64,7 +64,7 @@ def get_info(data_path, print=True):
         infos["nf"] = f["nf"][()]
         infos["nk"] = f["nk"][()]
 
-    if print:
+    if print_info:
         for key, value in infos.items():
             print(key, ":", value)
 

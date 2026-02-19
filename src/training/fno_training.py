@@ -79,13 +79,14 @@ class FNOTraining():
         self.train_frac = self.args.get("train_frac", 0.5)
         self.test_frac = self.args.get("test_frac", 0.2)
         self.stride = self.args.get("stride", 1)
+        self.ds = self.args.get("ds", 2)
 
         # Datasets
         self.datasets = DatasetManagerMulti(data_rep=DATA_DIR, exp_dir=self.exp_dir,
                                             seq_length=self.seq_length, batch_size=self.batch_size,
                                             num_workers=self.num_workers, ratio=self.ratio, 
                                             train_frac=self.train_frac, test_frac=self.test_frac,
-                                            stride=self.stride)
+                                            stride=self.stride, ds = self.ds)
         print("Datasets loaded.")
         print("Dataset summary:")
         print(f"Training samples: {self.datasets.n_train}, Testing samples: {self.datasets.n_test}")
