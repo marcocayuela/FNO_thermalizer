@@ -41,7 +41,7 @@ class Factory():
                "relative_rmse": relative_rmse,
                "relative_mae": relative_mae,
                "cross_entropy": lambda x,y: F.cross_entropy(x,y),
-               "mse_phys_and_fourier": lambda y_pred, y_true: torch.mean((y_pred - y_true)**2) + torch.mean(torch.log(1 + torch.mean((torch.fft.fft2(y_pred) - torch.fft.fft2(y_true))**2)))
+               "mse_phys_and_fourier": lambda y_pred, y_true: torch.mean((y_pred - y_true)**2) + torch.mean(torch.log(1 + torch.mean(torch.abs(torch.fft.fft2(y_pred) - torch.fft.fft2(y_true)))))
                }
     
     @staticmethod
