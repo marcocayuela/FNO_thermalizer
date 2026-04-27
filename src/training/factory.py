@@ -91,7 +91,7 @@ class Factory():
                "relative_rmse": relative_rmse,
                "relative_mae": relative_mae,
                "cross_entropy": lambda x,y: F.cross_entropy(x,y),
-               "mse_phys_and_fourier": lambda y_pred, y_true: mse_phys_and_spectral(y_pred, y_true, lambda_spec=1.0)
+               "mse_phys_and_fourier": lambda y_pred, y_true: mse_phys_and_spectral(y_pred, y_true, lambda_spec=0.1)
                }
     
     @staticmethod
