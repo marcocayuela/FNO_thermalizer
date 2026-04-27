@@ -58,9 +58,9 @@ def get_info(data_path, print_info=True):
         infos["re"] = f["re"][()]
         infos["resolution"] = f["resolution"][()]
         infos["dt_simul"] = f["dt"][()]
-        infos['simulation_time'] = f["time"][-1] + f["dt"]
+        infos['simulation_time'] = f["time"][-1]
         infos["nt"] = f["velocity_field"][()].shape[0]
-        infos["dt_saved"] = infos["simulation_time"]//infos["nt"]
+        infos["dt_saved"] = infos["simulation_time"]/infos["nt"]
         infos["nf"] = f["nf"][()]
         infos["nk"] = f["nk"][()]
 

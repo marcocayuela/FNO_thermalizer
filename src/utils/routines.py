@@ -2,7 +2,7 @@ import numpy as np
 
 
 
-def vorticity(velocity_field, dx=None):
+def vorticity(velocity_field, dx=None, dy=None):
 
     nx = velocity_field.shape[-3]
     ny = velocity_field.shape[-2]
