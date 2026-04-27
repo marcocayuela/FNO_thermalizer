@@ -30,6 +30,50 @@ def relative_mae(y_pred, y_true, eps=1e-8):
     norm = torch.mean(torch.abs(y_true)) + eps
     return mae / norm
 
+
+def radial_spectrum(u_hat):
+    B, H, W = u_hat.shape
+    
+    kx = torch.fft.fftfreq(H, device=u_hat.device) * H
+    ky = torch.fft.fftfreq(W, device=u_hat.device) * W
+    kx, ky = torch.meshgrid(kx, ky, indexing='ij')
+    
+    k = torch.sqrt(kx**2 + ky**2)
+    k = k.long()
+    
+    k_max = k.max().item() + 1
+    
+    E = torch.abs(u_hat)**2
+    
+    spectrum = torch.zeros((B, k_max), device=u_hat.device)
+    counts = torch.zeros((k_max,), device=u_hat.device)
+    
+    for i in range(k_max):
+        mask = (k == i)
+        counts[i] = mask.sum()
+        if counts[i] > 0:
+            spectrum[:, i] = (E[:, mask].mean(dim=1))
+    
+    return spectrum
+
+def spectral_loss(y_pred, y_true, alpha=2.0, eps=1e-8):
+    u_hat_pred = torch.fft.fft2(y_pred)
+    u_hat_true = torch.fft.fft2(y_true)
+    
+    E_pred = radial_spectrum(u_hat_pred)
+    E_true = radial_spectrum(u_hat_true)
+    
+    k = torch.arange(E_pred.shape[1], device=y_pred.device).float()
+    w = (k + 1)**alpha 
+    
+    loss = torch.mean(w * (torch.log(E_pred + eps) - torch.log(E_true + eps))**2)
+    return loss
+
+def mse_phys_and_spectral(y_pred, y_true, lambda_spec=1.0):
+    mse = torch.mean((y_pred - y_true)**2)
+    spec = spectral_loss(y_pred, y_true)
+    return mse + lambda_spec * spec
+
 class Factory():
 
     OPTIMIZERS = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}
@@ -41,7 +85,7 @@ class Factory():
                "relative_rmse": relative_rmse,
                "relative_mae": relative_mae,
                "cross_entropy": lambda x,y: F.cross_entropy(x,y),
-               "mse_phys_and_fourier": lambda y_pred, y_true: torch.mean((y_pred - y_true)**2) + torch.mean(torch.log(1 + torch.mean(torch.abs(torch.fft.fft2(y_pred) - torch.fft.fft2(y_true)))))
+               "mse_phys_and_fourier": lambda y_pred, y_true: mse_phys_and_spectral(y_pred, y_true, lambda_spec=1.0)
                }
     
     @staticmethod
