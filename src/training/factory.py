@@ -31,49 +31,53 @@ def relative_mae(y_pred, y_true, eps=1e-8):
     return mae / norm
 
 
-def radial_spectrum(u):
 
+def radial_spectrum(u):
+    """
+    u: (..., nx, ny, 2)
+    returns: (..., k_max)
+    """
     *batch_dims, nx, ny, _ = u.shape
     device = u.device
 
-    u_hat = torch.fft.fft2(u[..., 0], dim=(-2, -1))
-    v_hat = torch.fft.fft2(u[..., 1], dim=(-2, -1))
+    u_hat = torch.fft.fft2(u[..., 0], dim=(-2, -1), norm="ortho")
+    v_hat = torch.fft.fft2(u[..., 1], dim=(-2, -1), norm="ortho")
 
     E = 0.5 * (torch.abs(u_hat)**2 + torch.abs(v_hat)**2)
 
     kx = torch.fft.fftfreq(nx, device=device) * nx
     ky = torch.fft.fftfreq(ny, device=device) * ny
     kx, ky = torch.meshgrid(kx, ky, indexing='ij')
-    k = torch.sqrt(kx**2 + ky**2).long()
+    k = torch.sqrt(kx**2 + ky**2)
 
-    k_max = int(k.max().item()) + 1
+    k_bin = k.long()
+    k_max = int(k_bin.max().item()) + 1
 
-    E = E.reshape(-1, nx, ny)  
-    B_eff = E.shape[0]
+    E = E.reshape(-1, nx * ny)
+    k_bin = k_bin.reshape(-1)
 
-    spectrum = torch.zeros((B_eff, k_max), device=device)
+    B = E.shape[0]
 
-    for i in range(k_max):
-        mask = (k == i)
-        if mask.sum() > 0:
-            spectrum[:, i] = E[:, mask].mean(dim=1)
+    spectrum = torch.zeros((B, k_max), device=device)
+    counts = torch.zeros((k_max,), device=device)
 
-    spectrum = spectrum.reshape(*batch_dims, k_max)
+    spectrum.scatter_add_(1, k_bin.unsqueeze(0).expand(B, -1), E)
+    counts.scatter_add_(0, k_bin, torch.ones_like(k_bin, dtype=E.dtype))
 
-    return spectrum
+    counts = counts.clamp(min=1.0)
 
-def spectral_loss(y_pred, y_true, alpha=2.0, eps=1e-8):
+    spectrum = spectrum / counts 
 
+    return spectrum.reshape(*batch_dims, k_max)
+
+def spectral_loss(y_pred, y_true, eps=1e-8):
     E_pred = radial_spectrum(y_pred)
     E_true = radial_spectrum(y_true)
-    
-    k = torch.arange(E_pred.shape[1], device=y_pred.device).float()
-    w = (k + 1)**alpha 
-    
-    loss = torch.mean(w * (torch.log(E_pred + eps) - torch.log(E_true + eps))**2)
+
+    loss = torch.mean(((E_pred - E_true) / (E_true + eps))**2)
     return loss
 
-def mse_phys_and_spectral(y_pred, y_true, lambda_spec=1.0):
+def mse_phys_and_spectral(y_pred, y_true, lambda_spec=0.1):
     mse = torch.mean((y_pred - y_true)**2)
     spec = spectral_loss(y_pred, y_true)
     return mse + lambda_spec * spec
