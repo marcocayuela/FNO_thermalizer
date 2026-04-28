@@ -63,11 +63,9 @@ def radial_spectrum(u):
     return spectrum
 
 def spectral_loss(y_pred, y_true, alpha=2.0, eps=1e-8):
-    u_hat_pred = torch.fft.fft2(y_pred)
-    u_hat_true = torch.fft.fft2(y_true)
-    
-    E_pred = radial_spectrum(u_hat_pred)
-    E_true = radial_spectrum(u_hat_true)
+
+    E_pred = radial_spectrum(y_pred)
+    E_true = radial_spectrum(y_true)
     
     k = torch.arange(E_pred.shape[1], device=y_pred.device).float()
     w = (k + 1)**alpha 
