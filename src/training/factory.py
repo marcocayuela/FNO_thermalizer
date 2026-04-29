@@ -33,8 +33,8 @@ def relative_mae(y_pred, y_true, eps=1e-8):
 
 
 def spectral_loss(y_pred, y_true, eps=1e-8):
-    E_pred, _ = routines.energy_spectrum(y_pred)
-    E_true, _ = routines.energy_spectrum(y_true)
+    E_pred, _ = routines.energy_spectrum_torch(y_pred)
+    E_true, _ = routines.energy_spectrum_torch(y_true)
 
     loss = torch.mean(((E_pred - E_true) / (E_true + eps))**2)
     return loss
