@@ -1,6 +1,7 @@
 import torch
 import math
 import torch.nn.functional as F
+from utils import routines
 
 def relative_rmse(y_pred, y_true, eps=1e-8):
     """
@@ -31,48 +32,9 @@ def relative_mae(y_pred, y_true, eps=1e-8):
     return mae / norm
 
 
-
-def radial_spectrum(u):
-    """
-    u: (..., nx, ny, 2)
-    returns: (..., k_max)
-    """
-    *batch_dims, nx, ny, _ = u.shape
-    device = u.device
-
-    u_hat = torch.fft.fft2(u[..., 0], dim=(-2, -1), norm="ortho")
-    v_hat = torch.fft.fft2(u[..., 1], dim=(-2, -1), norm="ortho")
-
-    E = 0.5 * (torch.abs(u_hat)**2 + torch.abs(v_hat)**2)
-
-    kx = torch.fft.fftfreq(nx, device=device) * nx
-    ky = torch.fft.fftfreq(ny, device=device) * ny
-    kx, ky = torch.meshgrid(kx, ky, indexing='ij')
-    k = torch.sqrt(kx**2 + ky**2)
-
-    k_bin = k.long()
-    k_max = int(k_bin.max().item()) + 1
-
-    E = E.reshape(-1, nx * ny)
-    k_bin = k_bin.reshape(-1)
-
-    B = E.shape[0]
-
-    spectrum = torch.zeros((B, k_max), device=device)
-    counts = torch.zeros((k_max,), device=device)
-
-    spectrum.scatter_add_(1, k_bin.unsqueeze(0).expand(B, -1), E)
-    counts.scatter_add_(0, k_bin, torch.ones_like(k_bin, dtype=E.dtype))
-
-    counts = counts.clamp(min=1.0)
-
-    spectrum = spectrum / counts 
-
-    return spectrum.reshape(*batch_dims, k_max)
-
 def spectral_loss(y_pred, y_true, eps=1e-8):
-    E_pred = radial_spectrum(y_pred)
-    E_true = radial_spectrum(y_true)
+    E_pred, _ = routines.energy_spectrum(y_pred)
+    E_true, _ = routines.energy_spectrum(y_true)
 
     loss = torch.mean(((E_pred - E_true) / (E_true + eps))**2)
     return loss
