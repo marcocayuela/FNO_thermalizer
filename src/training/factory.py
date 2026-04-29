@@ -33,9 +33,11 @@ def relative_mae(y_pred, y_true, eps=1e-8):
 
 
 def spectral_loss(y_pred, y_true, eps=1e-8):
-    E_pred, _ = routines.energy_spectrum_torch(y_pred)
+    E_pred, k = routines.energy_spectrum_torch(y_pred)
     E_true, _ = routines.energy_spectrum_torch(y_true)
 
+    E_pred = k*E_pred
+    E_true = k*E_true
     loss = torch.mean(((E_pred - E_true) / (E_true + eps))**2)
     return loss
 
@@ -55,7 +57,7 @@ class Factory():
                "relative_rmse": relative_rmse,
                "relative_mae": relative_mae,
                "cross_entropy": lambda x,y: F.cross_entropy(x,y),
-               "mse_phys_and_fourier": lambda y_pred, y_true: mse_phys_and_spectral(y_pred, y_true, lambda_spec=0.1)
+               "mse_phys_and_fourier": lambda y_pred, y_true: mse_phys_and_spectral(y_pred, y_true, lambda_spec=1.)
                }
     
     @staticmethod
