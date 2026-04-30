@@ -54,12 +54,13 @@ class HFNOTraining():
         self.args = args
 
         self.device_asked = self.args.get("device", "auto")
+
         #Device parameters
         if self.device_asked in ["cuda","auto"] and torch.cuda.is_available():
             self.device = torch.device("cuda")
         elif self.device_asked in ["mps","auto"] and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             self.device = torch.device("mps")
-        elif self.device_asked in ["cpu","auto"]:
+        else:
             self.device = torch.device("cpu")
 
         print(f"Device used: {self.device}")

@@ -46,6 +46,34 @@ class FFNN2D(nn.Module):
         return self.model(x)
 
 
+class FFNN(nn.Module):
+
+    """Feed Forward Neural Network 
+    Args:
+        layers_width (list): list of integers representing the width of each layer;
+        activation (nn.Module, optional): activation function to use between layers. Defaults to nn.GELU();
+        device (str, optional): device to run the model on. Defaults to "cpu".
+    Returns:
+        nn.Module: Feed Forward Neural Network model.
+    """   
+
+    def __init__(self, layers_width, activation=nn.GELU(), device="cpu"):
+        super(FFNN, self).__init__()
+
+        self.layers_width = layers_width
+        self.depth = len(self.layers_width)
+        self.activation = activation
+
+        self.model = nn.Sequential()
+        for i in range(self.depth - 2):
+            self.model.append(nn.Linear(self.layers_width[i], self.layers_width[i+1], device=device))
+            self.model.append(self.activation)
+        self.model.append(nn.Linear(self.layers_width[-2], self.layers_width[-1], device=device))
+
+    def forward(self, input):
+        return self.model(input)
+    
+
 class HFNO2D_rect(nn.Module):
     def __init__(self, modes_layers_z, modes_x, depth, width_MLP, n_layers_MLP, input_size, output_size):
         super(HFNO2D_rect, self).__init__()
@@ -75,7 +103,7 @@ class HFNO2D_rect(nn.Module):
                 k_mode_z = self.modes_layers_z[i]-self.modes_layers_z[i-1]
             layers_width = [2*self.depth*k_mode_z*(2*self.modes_x-1)]+self.n_layers_MLP*[self.width_MLP]+[2*k_mode_z*(2*self.modes_x-1)*self.output_size]
 
-            self.sublayers.append(FFNN2D(layers_width))
+            self.sublayers.append(FFNN(layers_width))
 
             self.sublayers = nn.ModuleList(self.sublayers)
 
@@ -163,7 +191,7 @@ class HFNO2D_rect_w(nn.Module):
                 k_mode_z = self.modes_layers_z[i]-self.modes_layers_z[i-1]
             layers_width = [2*self.depth*k_mode_z*(2*self.modes_x-1)]+self.n_layers_MLP*[self.width_MLP]+[2*k_mode_z*(2*self.modes_x-1)*self.output_size]
 
-            self.sublayers.append(FFNN2D(layers_width))
+            self.sublayers.append(FFNN(layers_width))
 
             self.sublayers = nn.ModuleList(self.sublayers)
 
@@ -297,7 +325,7 @@ class HFNO_2D(nn.Module):
             input_modes = mask.sum()
             layers_width = [2*self.depth*input_modes]+self.n_layers_MLP*[self.width_MLP]+[2*input_modes*self.output_size]
 
-            self.sublayers.append(FFNN2D(layers_width, device=self.device))
+            self.sublayers.append(FFNN(layers_width, device=self.device))
 
             self.sublayers = nn.ModuleList(self.sublayers)
 
@@ -423,7 +451,7 @@ class HFNO2D_l2_overlap(nn.Module):
             input_modes = mask.sum()
             layers_width = [2*self.depth*input_modes]+self.n_layers_MLP*[self.width_MLP]+[2*input_modes*self.output_size]
 
-            self.sublayers.append(FFNN2D(layers_width))
+            self.sublayers.append(FFNN(layers_width))
 
             self.sublayers = nn.ModuleList(self.sublayers)
 
@@ -520,7 +548,7 @@ class FNO2D_v2_CNN(nn.Module):
             input_modes = mask.sum()
             layers_width = [2*self.depth*input_modes] + self.n_layers_MLP*[self.width_MLP] + [2*input_modes*self.output_size]
 
-            self.sublayers.append(FFNN2D(layers_width))
+            self.sublayers.append(FFNN(layers_width))
 
             self.sublayers = nn.ModuleList(self.sublayers)
 
