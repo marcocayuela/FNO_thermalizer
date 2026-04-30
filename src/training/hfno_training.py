@@ -107,10 +107,7 @@ class HFNOTraining():
         self.mode_separation = self.args.get("mode_separation", "Linf")
         self.residual = self.args.get("residual", None)
         self.res = self.args.get("res", None)
-
-        self.hidden_proj = self.args["hidden_proj"]
-        self.mlp = self.args.get("mlp", True)
-        self.layers_mlp = self.args.get("layers_mlp", None)
+        
         self.tau = self.args.get("tau", 1e-5)
 
 
