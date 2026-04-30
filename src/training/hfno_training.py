@@ -46,6 +46,7 @@ class EmulatorHFNO(hfno_2D.HFNO_2D):
 
 
 
+
 class HFNOTraining():
 
     def __init__(self, args):
@@ -107,7 +108,7 @@ class HFNOTraining():
         self.mode_separation = self.args.get("mode_separation", "Linf")
         self.residual = self.args.get("residual", None)
         self.res = self.args.get("res", None)
-        
+
         self.tau = self.args.get("tau", 1e-5)
 
 
