@@ -1,0 +1,56 @@
+########### EMULATOR #############
+seed: 42
+device: cuda
+
+# Experiment (ks, kolmogorov)
+exp_dir: kolmogorov/Re90
+input_dim: 2
+output_dim: 2
+n_dim: 2
+domain_size:
+  - 1
+  - 1
+ratio: 1
+modes:
+  - 3
+  - 6
+res: 64
+
+# Model parameters
+depth: 16
+width_MLP: 128
+n_layers_MLP: 2
+residual: null
+mode_separation: Linf
+tau: 0.00001
+
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+batch_size: 128
+num_workers: 2
+loss_fn: mse 
+optimizer: 
+  type: adam
+  lr: 0.001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse # relative rmse
+  - relative_mae # relative l1 norm
+
+train_frac: 0.6
+test_frac: 0.1
+stride: 5
+ds: 2
+
+
+#
+exp_name: exp3
+name_weigths_to_load: null
