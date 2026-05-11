@@ -94,7 +94,7 @@ class WNOTraining():
         self.width = self.args["width"]
         self.level = self.args["level"]
         self.layers = self.args["layers"]
-        self.size = self.args["ndim"]*[self.args["res"]]
+        self.size = self.args["n_dim"]*[self.args["res"]]
         self.wavelet = self.args["wavelet"]
         self.in_channel = self.args["in_channel"]
         self.out_channel = self.args["out_channel"]
