@@ -3,7 +3,7 @@ seed: 42
 device: cuda
 
 # Experiment (ks, kolmogorov)
-exp_dir: kolmogorov/Re34
+exp_dir: kolmogorov/Re90
 input_dim: 2
 output_dim: 2
 n_dim: 2

@@ -22,6 +22,9 @@ def set_seed(seed: int):
 
 
 if __name__ == "__main__":
+
+    if not os.path.exists("../runs"):
+        os.makedirs("../runs")
     with open("config_command_hfno_emul.yaml", "r") as f:
         args = yaml.safe_load(f)
     
