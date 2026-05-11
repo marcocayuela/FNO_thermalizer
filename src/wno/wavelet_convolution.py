@@ -588,3 +588,16 @@ class WNO2d(nn.Module):
         gridy = torch.linspace(0, self.grid_range[1], size_y, device=device)
         gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1)
+
+    def count_parameters_per_module(self):
+
+        param_dict = {}
+        
+        for name, module in self.named_children():
+            trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+            param_dict[name] = trainable
+        
+        param_dict["total"] = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        
+        return param_dict
+    
