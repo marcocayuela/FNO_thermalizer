@@ -4,14 +4,14 @@ import torch.nn.functional as F
 
 
 
-def get_meshgrid(shape):
+def get_meshgrid(shape, device="cpu"):
     batch_size, x_size, y_size, _ = shape
 
     #batch_size, x_size, y_size = shape[0], shape[1], shape[2]
-    x_grid = torch.linspace(0, 1, x_size)
+    x_grid = torch.linspace(0, 1, x_size, device=device)
     x_grid = x_grid.reshape(1, x_size, 1, 1).repeat([batch_size, 1, y_size, 1])
 
-    y_grid = torch.linspace(0, 1, y_size)
+    y_grid = torch.linspace(0, 1, y_size, device=device)
     y_grid = y_grid.reshape(1, 1, y_size, 1).repeat([batch_size, x_size, 1, 1])
 
     grid = torch.concat((x_grid, y_grid), dim=-1).float()
@@ -193,7 +193,7 @@ class FNO2D(nn.Module):
         # input_grid must be the concatenation of X and Y (meshgrids) shape must be (x_size, y_size, 2)
         # shape of x is (batch_size, x_size, y_size)
         
-        meshgrid = get_meshgrid(x.shape).to(self.device)
+        meshgrid = get_meshgrid(x.shape, self.device)
         # Concatenate the grid to the input to gt the term v0
         x = torch.cat((x, meshgrid), dim=-1)
 

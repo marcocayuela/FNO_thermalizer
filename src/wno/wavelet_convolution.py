@@ -39,7 +39,7 @@ except ImportError:
 
 """ Def: 1d Wavelet convolutional layer """
 class WaveConv1d(nn.Module):
-    def __init__(self, in_channels, out_channels, level, size, wavelet='db4', mode='symmetric'):
+    def __init__(self, in_channels, out_channels, level, size, wavelet='db4', mode='symmetric', device="cpu"):
         super(WaveConv1d, self).__init__()
 
         """
@@ -72,15 +72,16 @@ class WaveConv1d(nn.Module):
             raise Exception("size: WaveConv1d accepts signal length in scalar only") 
         self.wavelet = wavelet 
         self.mode = mode
-        self.dwt_ = DWT1D(wave=self.wavelet, J=self.level, mode=self.mode)
-        dummy_data = torch.randn( 1,1,self.size ) 
+        self.device = device
+        self.dwt_ = DWT1D(wave=self.wavelet, J=self.level, mode=self.mode).to(self.device)
+        dummy_data = torch.randn(1, 1, self.size, device=self.device)
         mode_data, _ = self.dwt_(dummy_data)
         self.modes1 = mode_data.shape[-1]
         
         # Parameter initilization
         self.scale = (1 / (in_channels*out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, device=self.device))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, device=self.device))
 
     # Convolution
     def mul1d(self, input, weights):
@@ -144,7 +145,7 @@ class WaveConv1d(nn.Module):
 
 """ Def: 2d Wavelet convolutional layer (discrete) """
 class WaveConv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, level, size, wavelet, mode='symmetric'):
+    def __init__(self, in_channels, out_channels, level, size, wavelet, mode='symmetric', device="cpu"):
         super(WaveConv2d, self).__init__()
 
         """
@@ -183,18 +184,19 @@ class WaveConv2d(nn.Module):
             raise Exception('size: WaveConv2dCwt accepts size of 2D signal is list')
         self.wavelet = wavelet       
         self.mode = mode
-        dummy_data = torch.randn( 1,1,*self.size )        
-        dwt_ = DWT(J=self.level, mode=self.mode, wave=self.wavelet)
+        self.device = device
+        dummy_data = torch.randn(1, 1, *self.size, device=self.device)
+        dwt_ = DWT(J=self.level, mode=self.mode, wave=self.wavelet).to(self.device)
         mode_data, mode_coef = dwt_(dummy_data)
         self.modes1 = mode_data.shape[-2]
         self.modes2 = mode_data.shape[-1]
         
         # Parameter initilization
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2))
-        self.weights3 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2))
-        self.weights4 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, device=self.device))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, device=self.device))
+        self.weights3 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, device=self.device))
+        self.weights4 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, device=self.device))
 
     # Convolution
     def mul2d(self, input, weights):
@@ -261,7 +263,7 @@ class WaveConv2d(nn.Module):
     
 """ Def: 2d Wavelet convolutional layer (slim continuous) """
 class WaveConv2dCwt(nn.Module):
-    def __init__(self, in_channels, out_channels, level, size, wavelet1, wavelet2):
+    def __init__(self, in_channels, out_channels, level, size, wavelet1, wavelet2, device="cpu"):
         super(WaveConv2dCwt, self).__init__()
 
         """
@@ -301,8 +303,9 @@ class WaveConv2dCwt(nn.Module):
             raise Exception('size: WaveConv2dCwt accepts size of 2D signal is list')
         self.wavelet_level1 = wavelet1
         self.wavelet_level2 = wavelet2        
-        dummy_data = torch.randn( 1,1,*self.size ) 
-        dwt_ = DTCWTForward(J=self.level, biort=self.wavelet_level1, qshift=self.wavelet_level2)
+        self.device = device
+        dummy_data = torch.randn(1, 1, *self.size, device=self.device) 
+        dwt_ = DTCWTForward(J=self.level, biort=self.wavelet_level1, qshift=self.wavelet_level2).to(self.device)
         mode_data, mode_coef = dwt_(dummy_data)
         self.modes1 = mode_data.shape[-2]
         self.modes2 = mode_data.shape[-1]
@@ -311,19 +314,19 @@ class WaveConv2dCwt(nn.Module):
         
         # Parameter initilization
         self.scale = (1 / (in_channels * out_channels))
-        self.weights0 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2))
-        self.weights15r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights15c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights45r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights45c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights75r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights75c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights105r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights105c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights135r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights135c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights165r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
-        self.weights165c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22))
+        self.weights0 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2), device=device)
+        self.weights15r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights15c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights45r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights45c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights75r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights75c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights105r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights105c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights135r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights135c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights165r = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
+        self.weights165c = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes21, self.modes22), device=device)
 
     # Convolution
     def mul2d(self, input, weights):
@@ -508,7 +511,7 @@ class WaveConv3d(nn.Module):
 
 
 class WNO2d(nn.Module):
-    def __init__(self, width, level, layers, size, wavelet, in_channel, out_channel, grid_range, padding=0):
+    def __init__(self, width, level, layers, size, wavelet, in_channel, out_channel, grid_range, padding=0, device="cpu"):
         super(WNO2d, self).__init__()
 
         """
@@ -541,6 +544,7 @@ class WNO2d(nn.Module):
         self.size = size
         self.wavelet1 = wavelet[0]
         self.wavelet2 = wavelet[1]
+        self.device = device
         self.in_channel = in_channel
         self.out_channel = out_channel
         self.grid_range = grid_range 
@@ -548,13 +552,13 @@ class WNO2d(nn.Module):
         
         self.conv = nn.ModuleList()
         self.w = nn.ModuleList()
-        self.fc0 = nn.Linear(self.in_channel + 2, self.width) 
+        self.fc0 = nn.Linear(self.in_channel + 2, self.width, device=self.device) 
         for i in range( self.layers ):
             self.conv.append(WaveConv2dCwt(self.width, self.width, self.level, self.size,
-                                            self.wavelet1, self.wavelet2))
-            self.w.append( nn.Conv2d(self.width, self.width, 1) )
-        self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, self.out_channel)
+                                            self.wavelet1, self.wavelet2, device=self.device))
+            self.w.append(nn.Conv2d(self.width, self.width, 1, device=self.device))
+        self.fc1 = nn.Linear(self.width, 128, device=self.device)
+        self.fc2 = nn.Linear(128, self.out_channel, device=self.device)
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
@@ -583,4 +587,6 @@ class WNO2d(nn.Module):
         gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
         gridy = torch.tensor(np.linspace(0, self.grid_range[1], size_y), dtype=torch.float)
         gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
-        return torch.cat((gridx, gridy), dim=-1).to(device)
+        gridx = gridx.to(device)
+        gridy = gridy.to(device)
+        return torch.cat((gridx, gridy), dim=-1)

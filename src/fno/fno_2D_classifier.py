@@ -62,7 +62,7 @@ class FNO2D_classifier(nn.Module):
         # input_grid must be the concatenation of X and Y (meshgrids) shape must be (x_size, y_size, 2)
         # shape of x is (batch_size, x_size, y_size)
         
-        meshgrid = get_meshgrid(x.shape).to(self.device)
+        meshgrid = get_meshgrid(x.shape, self.device)
         # Concatenate the grid to the input to gt the term v0
         x = torch.cat((x, meshgrid), dim=-1)
 
@@ -119,7 +119,7 @@ class FNO2D_classifier(nn.Module):
         """ Forward pass with only a regressor output"""
     
 
-        meshgrid = get_meshgrid(x.shape).to(self.device)
+        meshgrid = get_meshgrid(x.shape, self.device)
         x = torch.cat((x, meshgrid), dim=-1)
         x = self.P(x)
         x = x.permute(0, 3, 1, 2)
