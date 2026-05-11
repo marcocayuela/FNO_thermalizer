@@ -96,8 +96,8 @@ class WNOTraining():
         self.layers = self.args["layers"]
         self.size = self.args["n_dim"]*[self.args["res"]]
         self.wavelet = self.args["wavelet"]
-        self.in_channel = self.args["in_channel"]
-        self.out_channel = self.args["out_channel"]
+        self.in_channel = self.args["input_dim"]
+        self.out_channel = self.args["output_dim"]
         self.domain_size = self.args["domain_size"]
         self.tau = self.args.get("tau", 1e-5)
         self.padding = self.args.get("padding", 0)
