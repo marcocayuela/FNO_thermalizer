@@ -542,9 +542,10 @@ class WNO2d(nn.Module):
         self.width = width
         self.layers = layers
         self.size = size
-        if isinstance(wavelet, list):
-            self.wavelet1 = wavelet[0]
-            self.wavelet2 = wavelet[1]
+        self.wavelet = wavelet
+        if isinstance(self.wavelet, list):
+            self.wavelet1 = self.wavelet[0]
+            self.wavelet2 = self.wavelet[1]
         else:
             self.wavelet = wavelet
         self.device = device
