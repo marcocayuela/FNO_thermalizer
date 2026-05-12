@@ -561,7 +561,7 @@ class WNO2d(nn.Module):
                 self.conv.append(WaveConv2dCwt(self.width, self.width, self.level, self.size,
                                                self.wavelet1, self.wavelet2, device=self.device))
             else:
-                self.conv.append(WaveConv2d(self.width, self.width, self.level, self.size, self.wavelet, device=self.device))
+                self.conv.append(WaveConv2d(self.width, self.width, self.level, self.size, self.wavelet, device=self.device, mode="periodic"))
             self.w.append(nn.Conv2d(self.width, self.width, 1, device=self.device))
         self.fc1 = nn.Linear(self.width, 128, device=self.device)
         self.fc2 = nn.Linear(128, self.out_channel, device=self.device)
