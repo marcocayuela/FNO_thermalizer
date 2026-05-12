@@ -542,8 +542,11 @@ class WNO2d(nn.Module):
         self.width = width
         self.layers = layers
         self.size = size
-        self.wavelet1 = wavelet[0]
-        self.wavelet2 = wavelet[1]
+        if isinstance(wavelet, list):
+            self.wavelet1 = wavelet[0]
+            self.wavelet2 = wavelet[1]
+        else:
+            self.wavelet = wavelet
         self.device = device
         self.in_channel = in_channel
         self.out_channel = out_channel
@@ -554,8 +557,11 @@ class WNO2d(nn.Module):
         self.w = nn.ModuleList()
         self.fc0 = nn.Linear(self.in_channel + 2, self.width, device=self.device) 
         for i in range( self.layers ):
-            self.conv.append(WaveConv2dCwt(self.width, self.width, self.level, self.size,
-                                            self.wavelet1, self.wavelet2, device=self.device))
+            if isinstance(self.wavelet, list):
+                self.conv.append(WaveConv2dCwt(self.width, self.width, self.level, self.size,
+                                               self.wavelet1, self.wavelet2, device=self.device))
+            else:
+                self.conv.append(WaveConv2d(self.width, self.width, self.level, self.size, self.wavelet, device=self.device))
             self.w.append(nn.Conv2d(self.width, self.width, 1, device=self.device))
         self.fc1 = nn.Linear(self.width, 128, device=self.device)
         self.fc2 = nn.Linear(128, self.out_channel, device=self.device)
