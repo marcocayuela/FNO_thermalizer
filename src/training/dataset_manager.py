@@ -134,14 +134,14 @@ class DatasetManagerMulti():
                         all_x.append(tensor_data[:-1])
                         all_y.append(dx)
 
-                    all_x = torch.cat(all_x, dim=0)
-                    all_y = torch.cat(all_y, dim=0)
+                all_x = torch.cat(all_x, dim=0)
+                all_y = torch.cat(all_y, dim=0)
 
-                    x_mean = all_x.mean(dim=(0,1,2), keepdim=True)
-                    x_std = all_x.std(dim=(0,1,2), keepdim=True)
+                x_mean = all_x.mean(dim=(0,1,2), keepdim=True)
+                x_std = all_x.std(dim=(0,1,2), keepdim=True)
 
-                    y_mean = all_y.mean(dim=(0,1,2), keepdim=True)
-                    y_std = all_y.std(dim=(0,1,2), keepdim=True)
+                y_mean = all_y.mean(dim=(0,1,2), keepdim=True)
+                y_std = all_y.std(dim=(0,1,2), keepdim=True)
 
                 for sim_file in simulation_files:
                     with h5py.File(sim_file, "r") as f:
