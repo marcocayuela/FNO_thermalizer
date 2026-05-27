@@ -12,7 +12,16 @@ from torch.utils.data import Dataset
 
 class SequenceDataset(Dataset):
     
-    def __init__(self, data, seq_length, stride=1):
+    def __init__(self,
+                 data,
+                 seq_length,
+                 stride=1,
+                 normalize=False,
+                 x_mean=None,
+                 x_std=None,
+                 y_mean=None,
+                 y_std=None):
+        
         """
         data: array ou tensor de forme (nt, ...)
         seq_length: horizon de prédiction
@@ -25,6 +34,14 @@ class SequenceDataset(Dataset):
         self.seq_length = seq_length
         self.stride = stride
 
+        self.normalize = normalize
+
+        self.x_mean = x_mean
+        self.x_std = x_std
+
+        self.y_mean = y_mean
+        self.y_std = y_std
+
     def __len__(self):
         # on a besoin de t + seq_length
         return (self.data.shape[0] - self.seq_length - 1) // self.stride 
@@ -32,10 +49,16 @@ class SequenceDataset(Dataset):
     def __getitem__(self, idx):
         # snapshot initial
         idx = idx * self.stride
-        x0 = self.data[idx]                      # (...)
+        x0 = self.data[idx]
 
-        # séquence future
-        y = self.data[idx + 1 : idx + 1 + self.seq_length] - self.data[idx : idx + self.seq_length]  # (seq_length, ...)
+        y = (
+            self.data[idx + 1 : idx + 1 + self.seq_length]
+            - self.data[idx : idx + self.seq_length]
+        )
+
+        if self.normalize:
+            x0 = (x0 - self.x_mean) / (self.x_std + 1e-8)
+            y = (y - self.y_mean) / (self.y_std + 1e-8)
 
         return x0, y
     
@@ -71,7 +94,7 @@ class FirstSnapshot(Dataset):
 
 class DatasetManagerMulti():
 
-    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False):
+    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False, normalize=True):
 
         self.exp_dir = exp_dir
         self.seq_length = seq_length
@@ -91,18 +114,39 @@ class DatasetManagerMulti():
 
         if self.exp_dir == "kolmogorov/Re34" or self.exp_dir == "kolmogorov/Re90":
 
-            data_dir = os.path.join(data_rep, self.exp_dir, "train_traj")
+            data_dir = os.path.join(data_rep, self.exp_dir, "train_traj") ### NAME OF THE FOLDER CONTAINING THE TRAINING SIMULATIONS
 
             simulation_files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith(".h5")]
             
             datasets = []
 
             if not diffusion:
-             
+
+                all_x = []
+                all_y = []
+                for sim_file in simulation_files:
+
+                    with h5py.File(sim_file, "r") as f:
+
+                        data = f["velocity_field"][()][::self.ratio, ::self.ds, ::self.ds]
+                        tensor_data = torch.from_numpy(data).float()
+                        dx = tensor_data[1:] - tensor_data[:-1]
+                        all_x.append(tensor_data[:-1])
+                        all_y.append(dx)
+
+                    all_x = torch.cat(all_x, dim=0)
+                    all_y = torch.cat(all_y, dim=0)
+
+                    x_mean = all_x.mean(dim=(0,1,2), keepdim=True)
+                    x_std = all_x.std(dim=(0,1,2), keepdim=True)
+
+                    y_mean = all_y.mean(dim=(0,1,2), keepdim=True)
+                    y_std = all_y.std(dim=(0,1,2), keepdim=True)
+
                 for sim_file in simulation_files:
                     with h5py.File(sim_file, "r") as f:
                         data = f["velocity_field"][()][::self.ratio,::self.ds, ::self.ds]
-                        datasets.append(SequenceDataset(data, seq_length=self.seq_length, stride=self.stride))
+                        datasets.append(SequenceDataset(data, seq_length=self.seq_length, stride=self.stride, x_mean=x_mean, x_std=x_std, y_mean=y_mean, y_std=y_std, normalize=normalize))
                     
                 self.sequence_dataset = ConcatDataset(datasets)
 
