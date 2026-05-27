@@ -59,7 +59,7 @@ class SequenceDataset(Dataset):
         if self.normalize:
             x0 = (x0 - self.x_mean) / (self.x_std + 1e-8)
             y = (y - self.y_mean) / (self.y_std + 1e-8)
-
+        
         return x0, y
     
 class FirstSnapshot(Dataset):
@@ -142,7 +142,6 @@ class DatasetManagerMulti():
 
                 y_mean = all_y.mean(dim=(0,1,2), keepdim=True)
                 y_std = all_y.std(dim=(0,1,2), keepdim=True)
-
                 for sim_file in simulation_files:
                     with h5py.File(sim_file, "r") as f:
                         data = f["velocity_field"][()][::self.ratio,::self.ds, ::self.ds]

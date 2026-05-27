@@ -56,6 +56,8 @@ class WNOTraining():
             self.device = torch.device("mps")
         elif self.device_asked in ["cpu","auto"]:
             self.device = torch.device("cpu")
+        else:
+            self.device = torch.device("cpu")
 
         print(f"Device used: {self.device}")
         
