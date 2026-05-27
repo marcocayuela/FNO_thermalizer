@@ -94,7 +94,7 @@ class FirstSnapshot(Dataset):
 
 class DatasetManagerMulti():
 
-    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False, normalize=False):
+    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False, normalize=True):
 
         self.exp_dir = exp_dir
         self.seq_length = seq_length
@@ -137,11 +137,11 @@ class DatasetManagerMulti():
                 all_x = torch.cat(all_x, dim=0)
                 all_y = torch.cat(all_y, dim=0)
 
-                x_mean = all_x.mean(dim=(0,1,2), keepdim=True)
-                x_std = all_x.std(dim=(0,1,2), keepdim=True)
+                x_mean = all_x.mean(dim=(0,1,2))
+                x_std = all_x.std(dim=(0,1,2))
 
-                y_mean = all_y.mean(dim=(0,1,2), keepdim=True)
-                y_std = all_y.std(dim=(0,1,2), keepdim=True)
+                y_mean = all_y.mean(dim=(0,1,2))
+                y_std = all_y.std(dim=(0,1,2))
                 for sim_file in simulation_files:
                     with h5py.File(sim_file, "r") as f:
                         data = f["velocity_field"][()][::self.ratio,::self.ds, ::self.ds]
