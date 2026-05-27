@@ -79,6 +79,7 @@ class FNOTraining():
         self.train_frac = self.args.get("train_frac", 0.5)
         self.test_frac = self.args.get("test_frac", 0.2)
         self.stride = self.args.get("stride", 1)
+        self.prediction_mode = self.args.get("prediction_mode", "delta")
         self.ds = self.args.get("ds", 2)
 
         # Datasets
@@ -86,7 +87,8 @@ class FNOTraining():
                                             seq_length=self.seq_length, batch_size=self.batch_size,
                                             num_workers=self.num_workers, ratio=self.ratio, 
                                             train_frac=self.train_frac, test_frac=self.test_frac,
-                                            stride=self.stride, ds = self.ds)
+                                            stride=self.stride, ds = self.ds,
+                                            prediction_mode=self.prediction_mode)
         print("Datasets loaded.")
         print("Dataset summary:")
         print(f"Training samples: {self.datasets.n_train}, Testing samples: {self.datasets.n_test}")
@@ -180,18 +182,21 @@ class FNOTraining():
         self.loss_fn = Factory.get_metric(self.loss_fn)
         # Create the trainer and train
 
-        trainer = Trainer(model=model,
-                          train_loader=self.datasets.training_loader,
-                          test_loader=self.datasets.testing_loader,
-                          loss_fn=self.loss_fn,
-                          optimizer=self.optimizer,
-                          scheduler=self.scheduler,
-                          num_epochs=self.num_epochs,
-                          device=self.device,
-                          exp_dir=self.exp_dir,
-                          exp_name=self.exp_name, 
-                          metrics=self.metrics,
-                          start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1)
+        trainer = Trainer(
+            model=model,
+            train_loader=self.datasets.training_loader,
+            test_loader=self.datasets.testing_loader,
+            loss_fn=self.loss_fn,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            num_epochs=self.num_epochs,
+            device=self.device,
+            exp_dir=self.exp_dir,
+            exp_name=self.exp_name,
+            metrics=self.metrics,
+            start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1,
+            prediction_mode=self.prediction_mode,
+        )
         
         trainer.train_loop()
 

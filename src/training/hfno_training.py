@@ -83,13 +83,22 @@ class HFNOTraining():
         self.test_frac = self.args.get("test_frac", 0.2)
         self.stride = self.args.get("stride", 1)
         self.ds = self.args.get("ds", 2)
+        self.prediction_mode = self.args.get("prediction_mode", "delta")
 
         # Datasets
-        self.datasets = DatasetManagerMulti(data_rep=DATA_DIR, exp_dir=self.exp_dir,
-                                            seq_length=self.seq_length, batch_size=self.batch_size,
-                                            num_workers=self.num_workers, ratio=self.ratio, 
-                                            train_frac=self.train_frac, test_frac=self.test_frac,
-                                            stride=self.stride, ds = self.ds)
+        self.datasets = DatasetManagerMulti(
+            data_rep=DATA_DIR,
+            exp_dir=self.exp_dir,
+            seq_length=self.seq_length,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            ratio=self.ratio,
+            train_frac=self.train_frac,
+            test_frac=self.test_frac,
+            stride=self.stride,
+            ds=self.ds,
+            prediction_mode=self.prediction_mode,
+        )
         print("Datasets loaded.")
         print("Dataset summary:")
         print(f"Training samples: {self.datasets.n_train}, Testing samples: {self.datasets.n_test}")
@@ -192,7 +201,8 @@ class HFNOTraining():
                           exp_dir=self.exp_dir,
                           exp_name=self.exp_name, 
                           metrics=self.metrics,
-                          start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1)
+                          start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1,
+                          prediction_mode=self.prediction_mode)
         
         trainer.train_loop()
 
