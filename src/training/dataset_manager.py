@@ -94,7 +94,7 @@ class FirstSnapshot(Dataset):
 
 class DatasetManagerMulti():
 
-    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False, normalize=True):
+    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False, normalize=False):
 
         self.exp_dir = exp_dir
         self.seq_length = seq_length
