@@ -20,7 +20,8 @@ class SequenceDataset(Dataset):
                  x_mean=None,
                  x_std=None,
                  y_mean=None,
-                 y_std=None):
+                 y_std=None,
+                 prediction_mode="delta"):
         
         """
         data: array ou tensor de forme (nt, ...)
@@ -41,6 +42,7 @@ class SequenceDataset(Dataset):
 
         self.y_mean = y_mean
         self.y_std = y_std
+        self.prediction_mode = prediction_mode
 
     def __len__(self):
         # on a besoin de t + seq_length
@@ -51,10 +53,13 @@ class SequenceDataset(Dataset):
         idx = idx * self.stride
         x0 = self.data[idx]
 
-        y = (
-            self.data[idx + 1 : idx + 1 + self.seq_length]
-            - self.data[idx : idx + self.seq_length]
-        )
+        if self.prediction_mode == "state":
+            y = self.data[idx + 1 : idx + 1 + self.seq_length]
+        else:
+            y = (
+                self.data[idx + 1 : idx + 1 + self.seq_length]
+                - self.data[idx : idx + self.seq_length]
+            )
 
         if self.normalize:
             x0 = (x0 - self.x_mean) / (self.x_std + 1e-8)
@@ -94,7 +99,7 @@ class FirstSnapshot(Dataset):
 
 class DatasetManagerMulti():
 
-    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False, normalize=True):
+    def __init__(self, data_rep, exp_dir, seq_length, batch_size, num_workers, ratio=1, train_frac=0.3, test_frac=0.1, stride=1, ds=2, diffusion=False, normalize=True, prediction_mode="delta"):
 
         self.exp_dir = exp_dir
         self.seq_length = seq_length
@@ -106,6 +111,7 @@ class DatasetManagerMulti():
         self.testing_loader = None
         self.stride = stride
         self.ds = ds
+        self.prediction_mode = prediction_mode
         if type(ratio)!=int or ratio <1:
             print("Ratio must be an integer greater than 1. It has been automatically set to 1")
             self.ratio = 1
@@ -130,9 +136,12 @@ class DatasetManagerMulti():
 
                         data = f["velocity_field"][()][::self.ratio, ::self.ds, ::self.ds]
                         tensor_data = torch.from_numpy(data).float()
-                        dx = tensor_data[1:] - tensor_data[:-1]
                         all_x.append(tensor_data[:-1])
-                        all_y.append(dx)
+                        if self.prediction_mode == "state":
+                            all_y.append(tensor_data[1:])
+                        else:
+                            dx = tensor_data[1:] - tensor_data[:-1]
+                            all_y.append(dx)
 
                 all_x = torch.cat(all_x, dim=0)
                 all_y = torch.cat(all_y, dim=0)
@@ -145,7 +154,15 @@ class DatasetManagerMulti():
                 for sim_file in simulation_files:
                     with h5py.File(sim_file, "r") as f:
                         data = f["velocity_field"][()][::self.ratio,::self.ds, ::self.ds]
-                        datasets.append(SequenceDataset(data, seq_length=self.seq_length, stride=self.stride, x_mean=x_mean, x_std=x_std, y_mean=y_mean, y_std=y_std, normalize=normalize))
+                        datasets.append(SequenceDataset(data,
+                                                       seq_length=self.seq_length,
+                                                       stride=self.stride,
+                                                       x_mean=x_mean,
+                                                       x_std=x_std,
+                                                       y_mean=y_mean,
+                                                       y_std=y_std,
+                                                       normalize=normalize,
+                                                       prediction_mode=self.prediction_mode))
                     
                 self.sequence_dataset = ConcatDataset(datasets)
 

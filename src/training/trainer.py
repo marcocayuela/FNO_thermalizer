@@ -13,7 +13,7 @@ LOG_DIR = os.getenv("LOG_DIR", "../runs")
 
 class Trainer():
 
-    def __init__(self, model, train_loader, test_loader, loss_fn, optimizer, scheduler, num_epochs, device, exp_dir, exp_name, metrics, start_epoch):
+    def __init__(self, model, train_loader, test_loader, loss_fn, optimizer, scheduler, num_epochs, device, exp_dir, exp_name, metrics, start_epoch, prediction_mode="delta"):
         super(Trainer, self).__init__()
 
         self.model = model
@@ -26,6 +26,7 @@ class Trainer():
         self.test_loader = test_loader
         self.exp_dir = exp_dir
         self.exp_name = exp_name
+        self.prediction_mode = prediction_mode
         self.metrics = metrics
         self.start_epoch = start_epoch
         self.current_epoch = start_epoch
@@ -52,9 +53,13 @@ class Trainer():
 
             outputs = torch.empty_like(targets)
             for t in range(targets.shape[1]):
-                x_dt = self.model(x_t)
-                x_t = x_t + x_dt + self.model.tau*torch.randn_like(x_dt)
-                outputs[:,t,...] = x_dt
+                if self.prediction_mode == "state":
+                    x_t = self.model(x_t)
+                    outputs[:,t,...] = x_t
+                else:
+                    x_dt = self.model(x_t)
+                    x_t = x_t + x_dt + self.model.tau*torch.randn_like(x_dt)
+                    outputs[:,t,...] = x_dt
 
             #outputs = self.model.predict_sequence(inputs, pred_horizon=targets.shape[1])
 
@@ -85,9 +90,13 @@ class Trainer():
 
                 outputs = torch.empty_like(targets)
                 for t in range(targets.shape[1]):
-                    x_dt = self.model(x_t)
-                    x_t = x_t + x_dt + self.model.tau*torch.randn_like(x_dt)
-                    outputs[:,t,...] = x_dt
+                    if self.prediction_mode == "state":
+                        x_t = self.model(x_t)
+                        outputs[:,t,...] = x_t
+                    else:
+                        x_dt = self.model(x_t)
+                        x_t = x_t + x_dt + self.model.tau*torch.randn_like(x_dt)
+                        outputs[:,t,...] = x_dt
                     
                 loss = self.loss_fn(outputs, targets)
                 test_loss += loss.item()
