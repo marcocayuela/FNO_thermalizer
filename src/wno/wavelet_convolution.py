@@ -145,7 +145,7 @@ class WaveConv1d(nn.Module):
 
 """ Def: 2d Wavelet convolutional layer (discrete) """
 class WaveConv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, level, size, wavelet, mode='symmetric', device="cpu"):
+    def __init__(self, in_channels, out_channels, level, size, wavelet, mode='peridodization', device="cpu"):
         super(WaveConv2d, self).__init__()
 
         """
