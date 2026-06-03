@@ -1,0 +1,56 @@
+########### EMULATOR #############
+seed: 42
+device: cuda
+
+# Experiment (ks, kolmogorov)
+exp_dir: kolmogorov/Re90
+input_dim: 2
+output_dim: 2
+n_dim: 2
+domain_size:
+  - 1
+  - 1
+ratio: 1
+res: 64
+
+# Model parameters
+width: 16
+level: 4
+layers: 3
+wavelet:
+  - near_sym_b
+  - qshift_b 
+padding: 0
+tau: 0.00001
+n_cat: 100
+noise_sampling_coeff: 0.3
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+batch_size: 128
+num_workers: 2
+loss_fn: mse 
+loss_cat: cross_entropy
+optimizer: 
+  type: adam
+  lr: 0.001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse # relative rmse
+  - relative_mae # relative l1 norm
+
+lambda_c: 0.3
+stride: 5
+ds: 2
+
+
+#
+exp_name: wno_diff_1
+name_weights_to_load: null
