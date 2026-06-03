@@ -35,7 +35,7 @@ class FFNN(nn.Module):
 
 
 class WNO2d_classifier(nn.Module):
-    def __init__(self, width, level, layers, size, wavelet, in_channel, out_channel, grid_range, padding=0, class_mlp_layers=None, n_cat=100, device="cpu"):
+    def __init__(self, width, level, layers, size, wavelet, mode, in_channel, out_channel, grid_range, padding=0, class_mlp_layers=None, n_cat=100, device="cpu"):
         super(WNO2d_classifier, self).__init__()
 
         """
@@ -67,6 +67,7 @@ class WNO2d_classifier(nn.Module):
         self.layers = layers
         self.size = size
         self.wavelet = wavelet
+        self.mode = mode
         if isinstance(self.wavelet, list):
             self.wavelet1 = self.wavelet[0]
             self.wavelet2 = self.wavelet[1]
@@ -86,7 +87,7 @@ class WNO2d_classifier(nn.Module):
                 self.conv.append(WaveConv2dCwt(self.width, self.width, self.level, self.size,
                                                self.wavelet1, self.wavelet2, device=self.device))
             else:
-                self.conv.append(WaveConv2d(self.width, self.width, self.level, self.size, self.wavelet, device=self.device, mode="periodization"))
+                self.conv.append(WaveConv2d(self.width, self.width, self.level, self.size, self.wavelet, device=self.device, mode=self.mode))
             self.w.append(nn.Conv2d(self.width, self.width, 1, device=self.device))
         self.fc1 = nn.Linear(self.width, 128, device=self.device)
         self.fc2 = nn.Linear(128, self.out_channel, device=self.device)

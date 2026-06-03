@@ -100,6 +100,7 @@ class WNOTraining():
         self.layers = self.args["layers"]
         self.size = self.args["n_dim"]*[self.args["res"]]
         self.wavelet = self.args["wavelet"]
+        self.mode = self.args.get("mode", "periodization")
         self.in_channel = self.args["input_dim"]
         self.out_channel = self.args["output_dim"]
         self.domain_size = self.args["domain_size"]
@@ -146,6 +147,7 @@ class WNOTraining():
                             layers=self.layers,
                             size=self.size,
                             wavelet=self.wavelet,
+                            mode=self.mode,
                             in_channel=self.in_channel,
                             out_channel=self.out_channel,
                             grid_range=self.domain_size,

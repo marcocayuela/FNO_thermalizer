@@ -68,6 +68,7 @@ class DiffusionTraining():
         self.layers = self.args["layers"]
         self.size = self.args["n_dim"]*[self.args["res"]]
         self.wavelet = self.args["wavelet"]
+        self.mode = self.args.get("mode", "symmetric")
         self.in_channel = self.args["input_dim"]
         self.out_channel = self.args["output_dim"]
         self.domain_size = self.args["domain_size"]
@@ -118,6 +119,7 @@ class DiffusionTraining():
                                  level=self.level,
                                  layers=self.layers,
                                  wavelet=self.wavelet,
+                                 mode=self.mode,
                                  in_channel=self.in_channel,
                                  out_channel=self.out_channel,
                                  size=self.size,
