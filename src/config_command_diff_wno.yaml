@@ -30,7 +30,7 @@ num_epochs: 500
 seq_length: 5
 batch_size: 128
 num_workers: 2
-loss_fn: mse 
+loss_score: mse 
 loss_cat: cross_entropy
 optimizer: 
   type: adam
