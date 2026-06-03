@@ -77,7 +77,7 @@ class DiffusionTraining():
         self.domain_size = self.args["domain_size"]
 
         self.class_mlp_layers = self.args.get("class_mlp_layers", None)
-        self.timesteps = self.args.get("timesetps", 1000)
+        self.timesteps = self.args.get("timesteps", 1000)
         self.noise_sampling_coeff = self.args.get("noise_sampling_coeff", 0.3)
         self.lambda_c = self.args.get("lambda_c", 1.)
 
