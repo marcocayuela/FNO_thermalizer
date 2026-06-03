@@ -73,7 +73,6 @@ class DiffusionTraining():
         self.domain_size = self.args["domain_size"]
         self.tau = self.args.get("tau", 1e-5)
         self.padding = self.args.get("padding", 0)
-        self.n_cat = self.args.get("n_cat", 100)
         
         self.domain_size = self.args["domain_size"]
 
@@ -125,7 +124,7 @@ class DiffusionTraining():
                                  grid_range=self.domain_size,
                                  padding=self.padding,
                                  class_mlp_layers=self.class_mlp_layers,
-                                 n_cat=self.n_cat,
+                                 n_cat=self.timesteps,
                                  device=self.device)
 
         

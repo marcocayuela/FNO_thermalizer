@@ -22,7 +22,7 @@ wavelet:
   - qshift_b 
 padding: 0
 tau: 0.00001
-n_cat: 100
+timesteps: 100
 class_mlp_layers: [32,128,100]
 noise_sampling_coeff: 0.3
 
