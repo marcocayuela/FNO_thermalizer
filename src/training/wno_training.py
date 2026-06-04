@@ -16,9 +16,9 @@ LOG_DIR = os.getenv("LOG_DIR", "../runs")
 
 class EmulatorWNO(wavelet_convolution.WNO2d):
 
-    def __init__(self, width, level, layers, size, wavelet, in_channel, out_channel, grid_range, tau=1e-5, padding=0, device="cpu"):
+    def __init__(self, width, level, layers, size, wavelet, mode, in_channel, out_channel, grid_range, tau=1e-5, padding=0, device="cpu"):
 
-        super().__init__(width, level, layers, size, wavelet, in_channel, out_channel, grid_range, padding=padding, device=device)
+        super().__init__(width, level, layers, size, wavelet, mode, in_channel, out_channel, grid_range, padding=padding, device=device)
         self.tau = tau
 
     def predict_sequence(self, x0, pred_horizon):
@@ -80,13 +80,14 @@ class WNOTraining():
         self.stride = self.args.get("stride", 1)
         self.ds = self.args.get("ds", 2)
         self.prediction_mode = self.args.get("prediction_mode", "delta")
+        self.normalize = self.args.get("normalize", False)
 
         # Datasets
         self.datasets = DatasetManagerMulti(data_rep=DATA_DIR, exp_dir=self.exp_dir,
                                             seq_length=self.seq_length, batch_size=self.batch_size,
                                             num_workers=self.num_workers, ratio=self.ratio, 
                                             train_frac=self.train_frac, test_frac=self.test_frac,
-                                            stride=self.stride, ds = self.ds,
+                                            stride=self.stride, ds = self.ds, normalize=self.normalize,
                                             prediction_mode=self.prediction_mode)
         print("Datasets loaded.")
         print("Dataset summary:")
