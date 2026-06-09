@@ -7,13 +7,15 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 from training.metric_logger import MetricLogger
-
+from training.factory import Factory
 
 LOG_DIR = os.getenv("LOG_DIR", "../runs")
 
 class Trainer():
 
-    def __init__(self, model, train_loader, test_loader, loss_fn, optimizer, scheduler, num_epochs, device, exp_dir, exp_name, metrics, start_epoch, prediction_mode="delta"):
+    def __init__(self, model, train_loader, test_loader, loss_fn, optimizer, scheduler,
+                 num_epochs, device, exp_dir, exp_name, metrics, start_epoch, prediction_mode="delta",
+                 patience=None, min_delta=1e-8):
         super(Trainer, self).__init__()
 
         self.model = model
@@ -31,6 +33,8 @@ class Trainer():
         self.start_epoch = start_epoch
         self.current_epoch = start_epoch
 
+        self.early_stopping = Factory.EarlyStopping(patience=patience, min_delta=min_delta) if patience else None
+       
     def train_epoch(self):
 
 
@@ -110,8 +114,8 @@ class Trainer():
                 test_metrics[name] /= len(self.test_loader)
             test_metrics["loss"] = avg_test_loss
 
-
         current_lr = self.optimizer.param_groups[0]['lr']
+        
 
         return train_metrics, test_metrics, current_lr
     
@@ -182,6 +186,10 @@ class Trainer():
 
             if self.scheduler and self.scheduler.__class__.__name__ == "CosineAnnealingLR":
                 self.scheduler.step()
+
+            if self.early_stopping and self.early_stopping.step(test_metrics['loss']):
+                print(f"Early stopping à l'époque {epoch} "f"(pas d'amélioration depuis {self.early_stopping.patience} epochs)")
+                break
 
             self.current_epoch += 1
 

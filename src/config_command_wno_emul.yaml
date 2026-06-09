@@ -49,6 +49,9 @@ test_frac: 0.1
 stride: 5
 ds: 2
 
+#early stopping
+patience: 10
+min_delta: 1e-8
 
 #
 exp_name: hfno_emul_3_16

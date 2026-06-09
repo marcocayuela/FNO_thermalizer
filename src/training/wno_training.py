@@ -110,6 +110,9 @@ class WNOTraining():
         
         self.domain_size = self.args["domain_size"]
 
+        self.patience = self.args.get("patience", None)
+        self.min_delta = self.args.get("min_delta", 1e-8)
+
 
     def make_directories(self):
 
@@ -193,7 +196,9 @@ class WNOTraining():
                           exp_name=self.exp_name, 
                           metrics=self.metrics,
                           start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1,
-                          prediction_mode=self.prediction_mode)
+                          prediction_mode=self.prediction_mode,
+                          patience=self.patience,
+                          min_delta=self.min_delta)
         
         trainer.train_loop()
 
