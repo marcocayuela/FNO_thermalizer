@@ -82,7 +82,8 @@ class DiffusionTraining():
         self.noise_sampling_coeff = self.args.get("noise_sampling_coeff", 0.3)
         self.lambda_c = self.args.get("lambda_c", 1.)
 
-
+        self.patience = self.args.get("patience", None)
+        self.min_delta = self.args.get("min_delta", 1e-8)
 
     def make_directories(self):
 
@@ -176,7 +177,9 @@ class DiffusionTraining():
                                 exp_dir=self.exp_dir,
                                 exp_name=self.exp_name, 
                                 lambda_c=self.lambda_c,
-                                start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1)
+                                start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1,
+                                patience=self.patience,
+                                min_delta=self.min_delta)
         
         trainer.train_loop()
 

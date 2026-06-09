@@ -7,13 +7,14 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 from training.metric_logger import MetricLogger
+import training.factory as Factory
 
 
 LOG_DIR = os.getenv("LOG_DIR", "../runs")
 
 class TrainerDiffusion():
 
-    def __init__(self, model, train_loader, loss_score, loss_cat, lambda_c, optimizer, scheduler, num_epochs, device, exp_dir, exp_name, start_epoch):
+    def __init__(self, model, train_loader, loss_score, loss_cat, lambda_c, optimizer, scheduler, num_epochs, device, exp_dir, exp_name, start_epoch, patience=None, min_delta=1e-8):
         super(TrainerDiffusion, self).__init__()
 
         self.model = model
@@ -29,6 +30,8 @@ class TrainerDiffusion():
         self.start_epoch = start_epoch
         self.current_epoch = start_epoch
         self.lambda_c = lambda_c
+
+        self.early_stopping = Factory.EarlyStopping(patience=patience, min_delta=min_delta) if patience else None
 
     def train_epoch(self):
 
@@ -115,6 +118,10 @@ class TrainerDiffusion():
                 self.scheduler.step()
 
             self.current_epoch += 1
+
+            if self.early_stopping and self.early_stopping.step(train_loss_dict['training_loss']):
+                print(f"Early stopping at epoch {epoch} "f"(no amelioration since {self.early_stopping.patience} epochs)")
+                break
 
         path = os.path.join(LOG_DIR, self.exp_dir, self.exp_name, 'model_weights', 'final_model.pth')
         torch.save({'epoch':epoch,
