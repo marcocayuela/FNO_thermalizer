@@ -89,7 +89,7 @@ class EarlyStopping:
         self.best_loss = float('inf')
 
     def step(self, loss) -> bool:
-        """Retourne True si on doit stopper."""
+        """Return True if we have to stop."""
         if loss < self.best_loss - self.min_delta:
             self.best_loss = loss
             self.counter = 0

@@ -188,7 +188,7 @@ class Trainer():
                 self.scheduler.step()
 
             if self.early_stopping and self.early_stopping.step(test_metrics['loss']):
-                print(f"Early stopping à l'époque {epoch} "f"(pas d'amélioration depuis {self.early_stopping.patience} epochs)")
+                print(f"Early stopping at epoch {epoch} "f"(no amelioration since {self.early_stopping.patience} epochs)")
                 break
 
             self.current_epoch += 1
