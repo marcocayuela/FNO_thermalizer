@@ -96,4 +96,4 @@ class EarlyStopping:
         else:
             self.counter += 1
         return self.counter >= self.patience
-    
+        

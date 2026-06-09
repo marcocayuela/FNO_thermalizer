@@ -7,7 +7,7 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 from training.metric_logger import MetricLogger
-from training.factory import Factory
+import training.factory as Factory 
 
 LOG_DIR = os.getenv("LOG_DIR", "../runs")
 
