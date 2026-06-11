@@ -240,7 +240,6 @@ class WaveConv2d(nn.Module):
             x_ft, x_coeff = dwt(x)
         
         else:
-            print("size OK")
             # Compute single tree Discrete Wavelet coefficients using some wavelet
             dwt = DWT(J=self.level, mode=self.mode, wave=self.wavelet).to(x.device)
             x_ft, x_coeff = dwt(x)
