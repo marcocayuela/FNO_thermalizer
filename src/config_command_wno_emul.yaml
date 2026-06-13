@@ -15,25 +15,26 @@ res: 64
 
 # Model parameters
 width: 16
-level: 4
+level: 2
 layers: 3
-wavelet:
-  - near_sym_b
-  - qshift_b 
+#wavelet:
+#  - near_sym_b
+#  - qshift_b 
+wavelet: db6
 padding: 0
 tau: 0.00001
 
 
 # Training parameters
 num_epochs: 500
-seq_length: 5
+seq_length: 1
 batch_size: 128
-num_workers: 2
+num_workers: 1
 loss_fn: mse 
 optimizer: 
   type: adam
   lr: 0.001
-  wd: 100.
+  wd: 0.00001
 scheduler:
   name: cosine_annealing
   T_max: 500
@@ -49,10 +50,13 @@ test_frac: 0.1
 stride: 5
 ds: 2
 
+normalize: False
+prediction_mode: delta
+
 #early stopping
 patience: 10
 min_delta: 1e-8
 
 #
-exp_name: hfno_emul_3_16
+exp_name: wno_emul_lvl2_lay3_db6_delta_seq1
 name_weigths_to_load: null
