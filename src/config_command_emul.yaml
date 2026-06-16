@@ -11,8 +11,8 @@ domain_size:
   - 1
   - 1
 ratio: 1
-k_max_x: 12
-k_max_y: 12
+k_max_x: 32
+k_max_y: 32
 l: 1
 
 # Model parameters
@@ -51,5 +51,5 @@ ds: 2
 
 
 #
-exp_name: exp3
+exp_name: exp_modes_32modes_diffusion 
 name_weigths_to_load: null

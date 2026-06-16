@@ -14,16 +14,18 @@ ratio: 1
 res: 64
 
 # Model parameters
-width: 16
-level: 4
-layers: 3
-wavelet:
-  - near_sym_b
-  - qshift_b 
+width: 32
+level: 3
+layers: 4
+#wavelet:
+#  - near_sym_b
+#  - qshift_b 
+wavelet: db4
+mode: periodization
 padding: 0
 tau: 0.00001
-timesteps: 100
-class_mlp_layers: [32,128,100]
+timesteps: 1000
+class_mlp_layers: [64,128,1000]
 noise_sampling_coeff: 0.3
 
 # Training parameters
@@ -35,7 +37,7 @@ loss_score: mse
 loss_cat: cross_entropy
 optimizer: 
   type: adam
-  lr: 0.001
+  lr: 0.0005
   wd: 100.
 scheduler:
   name: cosine_annealing
@@ -51,7 +53,10 @@ lambda_c: 0.3
 stride: 5
 ds: 2
 
+#Early stopping
+patience: 10
+min_delta: 0.00000001
 
 #
-exp_name: wno_diff_1
+exp_name: wno_diff_lvl3_db4_period_mse_width32
 name_weights_to_load: null
