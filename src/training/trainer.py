@@ -53,7 +53,6 @@ class Trainer():
         for batch_idx, (inputs, targets) in batch_bar:
 
             x_t, targets = inputs.to(self.device).float(), targets.to(self.device).float()
-            print(targets.shape)
             self.optimizer.zero_grad()
 
             outputs = torch.empty_like(targets)
