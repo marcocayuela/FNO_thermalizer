@@ -53,13 +53,13 @@ class SequenceDataset(Dataset):
         idx = idx * self.stride
         x0 = self.data[idx]
 
-        #if self.prediction_mode == "state":
-        y = self.data[idx + 1 : idx + 1 + self.seq_length]
-        #else:
-        #    y = (
-        #        self.data[idx + 1 : idx + 1 + self.seq_length]
-        #        - self.data[idx : idx + self.seq_length]
-        #    )
+        if self.prediction_mode == "state":
+            y = self.data[idx + 1 : idx + 1 + self.seq_length]
+        else:
+            y = (
+                self.data[idx + 1 : idx + 1 + self.seq_length]
+                - self.data[idx : idx + self.seq_length]
+            )
 
         if self.normalize:
             x0 = (x0 - self.x_mean) / (self.x_std + 1e-8)
