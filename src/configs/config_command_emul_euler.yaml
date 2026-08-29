@@ -1,0 +1,64 @@
+########### EMULATOR (euler_multi_quadrants_openBC, gamma=1.4 "Dry_air") #############
+seed: 42
+device: cuda
+
+# Experiment -- 2D compressible Euler (The Well), open/extrapolation BC on
+# both axes, shocks/rarefactions/contact discontinuities from colliding
+# random piecewise-constant quadrant initial conditions. Single gamma
+# (non-parametric), matching Kolmogorov/KS's own mono-configuration design.
+# Data layout is The Well's own (one HDF5 file per split/chunk, several
+# trajectories inside) -- cf. training/euler_dataset.py, NOT the
+# Re<X>/train_traj/sim<N>.h5 convention used by exp_dir elsewhere in this
+# project. train_files/val_test_file below are resolved relative to
+# $DATA_DIR (cf. training/euler_dataset.py::load_euler_data).
+exp_dir: euler_multi_quadrants_openBC
+train_files:
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_test_file: euler_multi_quadrants_openBC/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_traj_idx: [0, 1, 2, 3, 4]
+test_traj_idx: [5, 6, 7, 8, 9]
+
+n_channels: 4  # energy, density, momentum_x, momentum_y (cf. euler_dataset.FIELD_ORDER)
+k: 1           # 1 input frame -> absolute-state prediction (cf. prediction_mode below)
+n_rollout_train: 2
+stride: 1
+
+# Model parameters -- same architecture family/scale as
+# RT_FNO_vs_WNO/src/configs/euler_fno.yaml (already validated there for this
+# exact dataset), only padding is the point of this port (was hardcoded to 0
+# in thermalizer's FNO2D before this experiment, cf. fno/fno_2D.py).
+modes_x: 24
+modes_y: 24
+kernel_size: 1
+n_layers: 4
+width: 48
+hidden_proj: 96
+mlp: true
+layers_mlp: [96, 192, 96]
+padding: 16
+tau: 0.00001
+prediction_mode: state
+
+# Training parameters
+num_epochs: 300
+batch_size: 4
+num_workers: 2
+loss_fn: relative_rmse
+optimizer:
+  type: adam
+  lr: 0.001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 300
+  eta_min: 0.000001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse
+  - relative_mae
+
+#
+exp_name: fno_euler_gamma1.4
+name_weigths_to_load: null

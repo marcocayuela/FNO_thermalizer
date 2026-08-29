@@ -8,27 +8,29 @@ from fno.fno_2D import *
 
 
 class FNO2D_classifier(nn.Module):
-    def __init__(self, input_dim, output_dim, modes_x, modes_y, width, l, n_layer=4, hidden_proj=None, mlp=True, layers_mlp=None, class_mlp_layers=None, n_cat=1000, device="cpu"):
+    def __init__(self, input_dim, output_dim, modes_x, modes_y, width, l, n_layer=4, hidden_proj=None, mlp=True, layers_mlp=None, class_mlp_layers=None, n_cat=1000, padding=0, device="cpu"):
         super(FNO2D_classifier, self).__init__()
-        
+
         self.device = device
 
         self.modes_x = modes_x  # k_modes on x
-        self.modes_y = modes_y  # k_modes on y 
+        self.modes_y = modes_y  # k_modes on y
         self.width = width  # d_v
         self.l = l  #kernel size in linear transformation
-        self.n_layer = n_layer #nbr of layers 
+        self.n_layer = n_layer #nbr of layers
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.mlp = mlp
         self.layers_mlp = layers_mlp
-        
+
         if not hidden_proj:
             self.hidden_proj = self.width
         else:
             self.hidden_proj = hidden_proj
 
-        self.padding = 0  # pad the domain if input is non-periodic
+        # Domain padding before the FFT -- see fno_2D.py::FNO2D's identical
+        # fix/comment. Default 0 = unchanged behavior for existing configs.
+        self.padding = padding
 
         self.activation = nn.LeakyReLU()
 

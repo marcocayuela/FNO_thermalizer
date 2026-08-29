@@ -1,0 +1,56 @@
+########## DIFFUSION (euler_multi_quadrants_openBC, gamma=1.4 "Dry_air") ##########
+
+seed: 42
+device: cuda
+
+# Same experiment/architecture family as config_command_emul_euler.yaml --
+# the mono-configuration diffusion corrector for the emulator trained there,
+# cf. fno/fno_2D_classifier.py, training/diffusion_training_euler.py.
+exp_dir: euler_multi_quadrants_openBC
+train_files:
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+stride: 1
+
+n_channels: 4  # energy, density, momentum_x, momentum_y
+# field_mean/field_std: fill in from the emulator run's saved config.yaml
+# (config_command_emul_euler.yaml's execute_experience() writes them there
+# after its own streaming pass) to avoid a second streaming pass over the
+# same train files. Left unset here -- load_euler_diffusion_data() falls
+# back to computing them itself if absent.
+# field_mean: [...]
+# field_std: [...]
+
+modes_x: 24
+modes_y: 24
+kernel_size: 1
+n_layers: 4
+width: 48
+hidden_proj: 96
+mlp: true
+layers_mlp: [96, 192, 96]
+padding: 16
+timesteps: 1000
+class_mlp_layers: [96, 192, 1000]
+noise_sampling_coeff: 0.3
+
+# Training parameters
+num_epochs: 300
+batch_size: 4
+num_workers: 2
+loss_score: mse
+loss_cat: cross_entropy
+optimizer:
+  type: adam
+  lr: 0.0001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 300
+  eta_min: 0.000001
+
+lambda_c: 0.3
+
+#
+exp_name: diffusion_euler_gamma1.4
+name_weigths_to_load: null

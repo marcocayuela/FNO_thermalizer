@@ -17,9 +17,10 @@ LOG_DIR = os.getenv("LOG_DIR", "../runs")
 class EmulatorFNO(fno_2D.FNO2D):
 
     def __init__(self, input_dim, output_dim, modes_x, modes_y, width, l,
-                 n_layer=4, hidden_proj=None, mlp=True, layers_mlp=None, tau=1e-5, device="cpu"):
+                 n_layer=4, hidden_proj=None, mlp=True, layers_mlp=None, tau=1e-5, padding=0, device="cpu"):
 
-        super().__init__(input_dim, output_dim, modes_x, modes_y, width, l, n_layer, hidden_proj, mlp, layers_mlp, device=device)
+        super().__init__(input_dim, output_dim, modes_x, modes_y, width, l, n_layer, hidden_proj, mlp, layers_mlp,
+                         padding=padding, device=device)
 
         self.tau = tau
 
