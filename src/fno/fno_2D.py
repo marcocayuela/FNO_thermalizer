@@ -150,27 +150,33 @@ class FourierLayer2D(nn.Module):
 
 
 class FNO2D(nn.Module):
-    def __init__(self, input_dim, output_dim, modes_x, modes_y, width, l, n_layer=4, hidden_proj=None, mlp=True, layers_mlp=None, device="cpu"):
+    def __init__(self, input_dim, output_dim, modes_x, modes_y, width, l, n_layer=4, hidden_proj=None, mlp=True, layers_mlp=None, padding=0, device="cpu"):
         super(FNO2D, self).__init__()
-        
+
         self.device = device
 
         self.modes_x = modes_x  # k_modes on x
-        self.modes_y = modes_y  # k_modes on y 
+        self.modes_y = modes_y  # k_modes on y
         self.width = width  # d_v
         self.l = l  #kernel size in linear transformation
-        self.n_layer = n_layer #nbr of layers 
+        self.n_layer = n_layer #nbr of layers
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.mlp = mlp
         self.layers_mlp = layers_mlp
-        
+
         if not hidden_proj:
             self.hidden_proj = self.width
         else:
             self.hidden_proj = hidden_proj
 
-        self.padding = 0  # pad the domain if input is non-periodic
+        # Domain padding before the FFT (Li et al. 2021): weakens FNO's
+        # implicit periodicity assumption for a non-periodic domain (e.g.
+        # euler_multi_quadrants_openBC's open BC). Was hardcoded to 0 here
+        # (dead code) -- exposed as a constructor arg instead, mirroring
+        # RT_FNO_vs_WNO/src/models/fno_2D.py's identical fix. Default 0 =
+        # unchanged behavior for existing (periodic) Kolmogorov/KS configs.
+        self.padding = padding
 
         self.activation = nn.LeakyReLU()
 
