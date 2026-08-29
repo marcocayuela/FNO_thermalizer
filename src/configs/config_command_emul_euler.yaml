@@ -15,7 +15,7 @@ exp_dir: euler_multi_quadrants_openBC
 train_files:
   - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
   - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
-val_test_file: euler_multi_quadrants_openBC/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_test_file: euler_multi_quadrants_openBC/data/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
 val_traj_idx: [0, 1, 2, 3, 4]
 test_traj_idx: [5, 6, 7, 8, 9]
 

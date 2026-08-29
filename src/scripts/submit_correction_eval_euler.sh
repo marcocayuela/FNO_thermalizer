@@ -24,7 +24,7 @@ OUT_DIR=${3:-$SCRATCH/correction_eval_euler_gamma1.4}
 
 python evaluation/correction_eval_euler.py \
     --data_dir "$DATA_DIR" \
-    --val_test_file euler_multi_quadrants_openBC/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5 \
+    --val_test_file euler_multi_quadrants_openBC/data/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5 \
     --traj_idx "$TRAJ_IDX" \
     --emulator_run "$SCRATCH/fno/runs/euler_multi_quadrants_openBC/fno_euler_gamma1.4" \
     --diffusion_run "$SCRATCH/fno/runs/euler_multi_quadrants_openBC/diffusion_euler_gamma1.4" \

@@ -1,0 +1,58 @@
+########## DIFFUSION (Re-conditioned, UNet + FiLM) -- 2-Re starter run ##########
+
+seed: 42
+device: cuda
+
+# Experiment -- reuses Parameterized_Neural_Operator's kolmogorov_parametric
+# dataset (Re<X>/train_traj/*.h5), not thermalizer's own single-Re kolmogorov/Re90.
+exp_dir: kolmogorov_parametric
+re_values: [50, 90]
+model_type: unet_film  # cf. training/diffusion_model_factory.py
+input_dim: 2
+output_dim: 2
+n_dim: 2
+domain_size:
+  - 1
+  - 1
+ratio: 1
+
+# Model parameters -- same depth/base_width as the existing (unconditioned)
+# UNet baseline (config_command_diff_unet.yaml), for a fair comparison.
+depth: 3
+base_width: 32
+param_embed_dim: 32
+param_hidden_dim: 64
+param_encoder_layers: 2
+timesteps: 1000
+# class_mlp_layers left unset on purpose: UNet2D_FiLM_classifier's default
+# ([2*bottleneck_ch+1, 4*bottleneck_ch, n_cat]) already accounts for the
+# extra Re scalar concatenated to the pooled features.
+class_mlp_layers: null
+noise_sampling_coeff: 0.3
+
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+batch_size: 128
+num_workers: 2
+loss_score: mse
+loss_cat: cross_entropy
+optimizer:
+  type: adam
+  lr: 0.0001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+
+
+lambda_c: 0.3
+stride: 5
+ds: 2
+
+
+#
+exp_name: diffusion_unet_film_re50-90_2re
+name_weigths_to_load: null

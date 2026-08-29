@@ -15,7 +15,8 @@ rsync -av $STORE/data/kolmogorov/ $SCRATCH/data/kolmogorov
 
 export DATA_DIR=$SCRATCH/data/
 export LOG_DIR=$SCRATCH/fno/runs/
+export PYTHONPATH="$PYTHONPATH:$(pwd)"
 
-python main_emul_hfno.py 
+python entrypoints/main_emul_hfno.py 
 source deactivate
 

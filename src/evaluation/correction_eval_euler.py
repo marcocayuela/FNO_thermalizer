@@ -17,7 +17,7 @@ are new here.
 Usage (on a compute node -- needs the raw .h5 data):
     python evaluation/correction_eval_euler.py \\
         --data_dir $DATA_DIR --exp_dir euler_multi_quadrants_openBC \\
-        --val_test_file euler_multi_quadrants_openBC/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5 \\
+        --val_test_file euler_multi_quadrants_openBC/data/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5 \\
         --traj_idx 5 \\
         --emulator_run $LOG_DIR/euler_multi_quadrants_openBC/fno_euler_gamma1.4 \\
         --diffusion_run $LOG_DIR/euler_multi_quadrants_openBC/diffusion_euler_gamma1.4 \\

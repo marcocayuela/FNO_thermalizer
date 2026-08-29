@@ -1,0 +1,70 @@
+########## DIFFUSION (Re-conditioned, FNO + hyper-R) -- 4-Re low/high regime, normalized ##########
+
+seed: 42
+device: cuda
+
+# Same as config_command_diff_fno_hyper_4re_lowhigh.yaml (re_values matching
+# Parameterized_Neural_Operator/configs/kolmogorov_pfno_hyper_4re_lowhigh_norm.yaml),
+# but with field (u,v) z-score normalization enabled -- cf.
+# training/dataset_manager.py::compute_field_stats/DatasetManagerMultiRe and
+# training/DiffusionModel.py::Diffusion's x_mean/x_std buffers. Stats are
+# computed from re_values' train_traj data and injected via
+# DatasetManagerMultiRe(..., normalize=True), same "computed from data ->
+# buffer on the model" flow already used for Re (param_mean/param_std).
+normalize: true
+
+exp_dir: kolmogorov_parametric
+re_values: [20, 30, 50, 80]
+model_type: fno_hyper
+input_dim: 2
+output_dim: 2
+n_dim: 2
+domain_size:
+  - 1
+  - 1
+ratio: 1
+k_max_x: 12
+k_max_y: 12
+l: 1
+
+# Model parameters -- same as config_command_diff_fno_hyper_4re_lowhigh.yaml,
+# only "normalize" (and exp_name) differ, for a direct comparison.
+n_fourier_layer: 3
+width: 32
+hidden_proj: 64
+mlp: true
+layers_mlp: [32,64,32]
+param_embed_dim: 32
+param_hidden_dim: 64
+param_encoder_layers: 2
+n_basis: 4
+timesteps: 1000
+class_mlp_layers: null
+noise_sampling_coeff: 0.3
+
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+batch_size: 128
+num_workers: 2
+loss_score: mse
+loss_cat: cross_entropy
+optimizer:
+  type: adam
+  lr: 0.0001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+
+
+lambda_c: 0.3
+stride: 5
+ds: 2
+
+
+#
+exp_name: diffusion_fno_hyper_4re_lowhigh_norm
+name_weigths_to_load: null
