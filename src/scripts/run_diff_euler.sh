@@ -11,8 +11,9 @@ module load python/3.11
 source activate fto
 pip install -r requirements.txt
 
-# Same train chunks as run_emul_euler.sh -- already fetched via
-# fetch_train_chunks_euler_mesu.sh, not re-synced here.
+# Same train chunks as run_emul_euler.sh -- fetched onto $STORE via
+# fetch_train_chunks_euler_mesu.sh, staged to $SCRATCH here (idempotent).
+rsync -av $STORE/data/euler_multi_quadrants_openBC/data/train/ $SCRATCH/data/euler_multi_quadrants_openBC/data/train/
 rsync -av $STORE/data/euler_multi_quadrants_openBC/valid/ $SCRATCH/data/euler_multi_quadrants_openBC/valid/
 
 export DATA_DIR=$SCRATCH/data/

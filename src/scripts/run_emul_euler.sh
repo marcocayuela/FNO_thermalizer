@@ -12,8 +12,11 @@ source activate fto
 pip install -r requirements.txt
 
 # Train chunks (~42 GB, gamma=1.4 "Dry_air", chunk_0+chunk_40) are fetched
-# once via fetch_train_chunks_euler_mesu.sh, not re-synced here (too large
-# for a per-job rsync) -- this only pulls the small valid split.
+# once from HF onto $STORE via fetch_train_chunks_euler_mesu.sh -- rsync'd
+# here from $STORE to $SCRATCH like the valid split; idempotent, so once
+# already staged on $SCRATCH this is a fast no-op checksum pass, not a
+# 42 GB re-transfer on every job.
+rsync -av $STORE/data/euler_multi_quadrants_openBC/data/train/ $SCRATCH/data/euler_multi_quadrants_openBC/data/train/
 rsync -av $STORE/data/euler_multi_quadrants_openBC/valid/ $SCRATCH/data/euler_multi_quadrants_openBC/valid/
 
 export DATA_DIR=$SCRATCH/data/
