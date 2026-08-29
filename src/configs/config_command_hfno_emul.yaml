@@ -17,7 +17,7 @@ modes:
 res: 64
 
 # Model parameters
-depth: 16
+depth: 8
 width_MLP: 128
 n_layers_MLP: 2
 residual: null
@@ -52,5 +52,5 @@ ds: 2
 
 
 #
-exp_name: hfno_emul_3_16
+exp_name: hfno_emul_3_6_seq5
 name_weigths_to_load: null

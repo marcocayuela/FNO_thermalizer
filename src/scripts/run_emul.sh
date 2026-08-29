@@ -17,6 +17,6 @@ export DATA_DIR=$SCRATCH/data/
 export LOG_DIR=$SCRATCH/fno/runs/
 export PYTHONPATH="$PYTHONPATH:$(pwd)"
 
-python entrypoints/main_emul.py 
+python entrypoints/main_emul_hfno.py 
 source deactivate
 
