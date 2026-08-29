@@ -21,6 +21,8 @@ n_channels: 4  # energy, density, momentum_x, momentum_y
 # field_mean: [...]
 # field_std: [...]
 
+# layers_mlp[0]/[-1] must equal width (48), not RT_FNO_vs_WNO's 96 -- cf.
+# the identical comment in config_command_emul_euler.yaml.
 modes_x: 24
 modes_y: 24
 kernel_size: 1
@@ -28,7 +30,7 @@ n_layers: 4
 width: 48
 hidden_proj: 96
 mlp: true
-layers_mlp: [96, 192, 96]
+layers_mlp: [48, 96, 48]
 padding: 16
 timesteps: 1000
 class_mlp_layers: [96, 192, 1000]

@@ -24,10 +24,15 @@ k: 1           # 1 input frame -> absolute-state prediction (cf. prediction_mode
 n_rollout_train: 2
 stride: 1
 
-# Model parameters -- same architecture family/scale as
-# RT_FNO_vs_WNO/src/configs/euler_fno.yaml (already validated there for this
-# exact dataset), only padding is the point of this port (was hardcoded to 0
-# in thermalizer's FNO2D before this experiment, cf. fno/fno_2D.py).
+# Model parameters -- same scale as RT_FNO_vs_WNO/src/configs/euler_fno.yaml
+# (already validated there for this exact dataset), but layers_mlp is NOT
+# copied verbatim from there: thermalizer's own FourierLayer2D builds every
+# Fourier layer at (width, width) in/out (cf. fno/fno_2D.py::FNO2D.__init__,
+# `FourierLayer2D(self.width, self.width, ...)` for all n_layers layers), so
+# layers_mlp[0]/[-1] must equal width (48) here, not RT_FNO_vs_WNO's 96 --
+# their FourierLayer2D evidently uses a different in/out convention. Only
+# padding is the actual point of this port (was hardcoded to 0 in
+# thermalizer's FNO2D before this experiment).
 modes_x: 24
 modes_y: 24
 kernel_size: 1
@@ -35,7 +40,7 @@ n_layers: 4
 width: 48
 hidden_proj: 96
 mlp: true
-layers_mlp: [96, 192, 96]
+layers_mlp: [48, 96, 48]
 padding: 16
 tau: 0.00001
 prediction_mode: state
