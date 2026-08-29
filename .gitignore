@@ -3,5 +3,7 @@ data/**
 
 runs/
 runs_mesu/
+results/
 
-
+__pycache__/
+*.pyc

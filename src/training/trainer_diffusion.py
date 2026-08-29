@@ -128,7 +128,56 @@ class TrainerDiffusion():
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict':self.optimizer.state_dict()},
                     path)
-        
-        print(f"Final model saved at epoch {epoch} with train loss: {train_loss_dict['training_loss']:.6f}")     
+
+        print(f"Final model saved at epoch {epoch} with train loss: {train_loss_dict['training_loss']:.6f}")
 
         self.logger.close()
+
+
+class TrainerDiffusionParametric(TrainerDiffusion):
+    """TrainerDiffusion for a Re-conditioned diffusion corrector (cf.
+    fno.fno_2D_classifier_concat.FNO2D_classifier_concat): the only thing
+    that changes is that the data loader (DatasetManagerMultiRe) yields
+    (image, re) tuples instead of bare images, and re must be threaded
+    through to the model. Everything else (checkpointing, logging, early
+    stopping) is inherited unchanged from TrainerDiffusion."""
+
+    def train_epoch(self):
+
+        self.model.train()
+        train_loss_dict = {"training_loss": 0., "loss_score": 0., "loss_cat": 0.}
+
+        batch_bar = tqdm(enumerate(self.train_loader),
+                         total=len(self.train_loader),
+                         desc=f"Epoch {self.current_epoch}",
+                         leave=False,
+                         ncols=90
+                         )
+
+        for batch_idx, (image, re) in batch_bar:
+
+            image = image.to(self.device).float()
+            re = re.to(self.device).float()
+            self.optimizer.zero_grad()
+
+            noise = torch.randn_like(image).to(self.device).float()
+            pred, _, t, pred_level = self.model(image, noise, True, re=re)
+            loss_score = self.loss_score(pred, noise)
+            loss_classifier = self.loss_cat(pred_level, t)
+            loss = loss_score + self.lambda_c * loss_classifier
+
+            loss.backward()
+            self.optimizer.step()
+            if self.scheduler and self.scheduler.__class__.__name__ == "OneCycleLR":
+                self.scheduler.step()
+
+            train_loss_dict["training_loss"] += loss.item()
+            train_loss_dict["loss_score"] += loss_score.item()
+            train_loss_dict["loss_cat"] += loss_classifier.item()
+
+        train_loss_dict["training_loss"] /= len(self.train_loader)
+        train_loss_dict["loss_score"] /= len(self.train_loader)
+        train_loss_dict["loss_cat"] /= len(self.train_loader)
+
+        current_lr = self.optimizer.param_groups[0]['lr']
+        return train_loss_dict, current_lr

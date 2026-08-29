@@ -1,0 +1,50 @@
+########### EMULATOR U-NET (state) #############
+seed: 42
+device: cuda
+
+# Experiment (ks, kolmogorov)
+exp_dir: kolmogorov/Re90
+input_dim: 2
+output_dim: 2
+n_dim: 2
+domain_size:
+  - 1
+  - 1
+ratio: 1
+
+# Model parameters
+depth: 3
+base_width: 32
+tau: 0.00001
+prediction_mode: state
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+batch_size: 128
+num_workers: 2
+loss_fn: mse
+optimizer:
+  type: adam
+  lr: 0.001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse
+  - relative_mae
+
+train_frac: 0.6
+test_frac: 0.1
+stride: 5
+ds: 2
+patience: 10
+min_delta: 1.0e-08
+
+#
+exp_name: unet_state_RE90
+name_weigths_to_load: null

@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     if not os.path.exists("../runs"):
         os.makedirs("../runs")
-    with open("config_command_diff.yaml", "r") as f:
+    with open("configs/config_command_diff.yaml", "r") as f:
         args = yaml.safe_load(f)
     
     set_seed(args["seed"])

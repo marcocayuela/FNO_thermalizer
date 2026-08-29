@@ -1,3 +1,11 @@
+"""
+Generic registries: optimizers, LR schedulers, loss/metric functions, and
+early stopping -- used by every training entrypoint regardless of model
+architecture. NOT to be confused with training/diffusion_model_factory.py,
+which builds a specific Re-conditioned diffusion *model* from a config dict
+(a different, narrower kind of factory).
+"""
+
 import torch
 import math
 import torch.nn.functional as F

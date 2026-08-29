@@ -1,0 +1,69 @@
+########## DIFFUSION (Re-conditioned, FNO + hyper-R) -- 4-Re low/high regime ##########
+
+seed: 42
+device: cuda
+
+# Experiment -- reuses Parameterized_Neural_Operator's kolmogorov_parametric
+# dataset (Re<X>/train_traj/*.h5), not thermalizer's own single-Re kolmogorov/Re90.
+# Matches Parameterized_Neural_Operator/configs/kolmogorov_pfno_hyper_4re_lowhigh.yaml's
+# re_values exactly: 2 points either side of the Re~35-55 rupture found
+# earlier this session, so the paired emulator+corrector experiment is
+# trained on the exact same 4 Re.
+exp_dir: kolmogorov_parametric
+re_values: [20, 30, 50, 80]
+model_type: fno_hyper  # cf. training/diffusion_model_factory.py
+input_dim: 2
+output_dim: 2
+n_dim: 2
+domain_size:
+  - 1
+  - 1
+ratio: 1
+k_max_x: 12
+k_max_y: 12
+l: 1
+
+# Model parameters -- same as config_command_diff_fno_hyper_2re.yaml, only
+# re_values changes, for a fair comparison at matched backbone capacity.
+n_fourier_layer: 3
+width: 32
+hidden_proj: 64
+mlp: true
+layers_mlp: [32,64,32]
+param_embed_dim: 32
+param_hidden_dim: 64
+param_encoder_layers: 2
+n_basis: 4
+timesteps: 1000
+# class_mlp_layers left unset on purpose: FNO2D_classifier_hyper's default
+# ([2*width+1, 4*width, n_cat]) already accounts for the extra Re scalar
+# concatenated to the pooled features.
+class_mlp_layers: null
+noise_sampling_coeff: 0.3
+
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+batch_size: 128
+num_workers: 2
+loss_score: mse
+loss_cat: cross_entropy
+optimizer:
+  type: adam
+  lr: 0.0001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+
+
+lambda_c: 0.3
+stride: 5
+ds: 2
+
+
+#
+exp_name: diffusion_fno_hyper_4re_lowhigh
+name_weigths_to_load: null

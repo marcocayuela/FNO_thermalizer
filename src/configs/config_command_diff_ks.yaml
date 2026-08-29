@@ -1,0 +1,53 @@
+########## DIFFUSION (KS equation, nu=0.35) ##########
+
+seed: 42
+device: cuda
+
+# Same experiment/architecture family as config_command_emul_ks.yaml -- the
+# Re-blind (mono-parameter) diffusion corrector for the emulator trained
+# there, cf. fno/fno_1D_classifier.py, training/diffusion_training_1d.py.
+exp_dir: KS_equation/nu0p35
+input_dim: 1
+output_dim: 1
+n_dim: 1
+domain_size:
+  - 22
+ratio: 1
+k_max: 32
+l: 1
+
+# Model parameters
+n_fourier_layer: 3
+width: 32
+hidden_proj: 64
+mlp: true
+layers_mlp: [32,64,32]
+timesteps: 1000
+class_mlp_layers: [64,128,1000]
+noise_sampling_coeff: 0.3
+
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+batch_size: 128
+num_workers: 2
+loss_score: mse
+loss_cat: cross_entropy
+optimizer:
+  type: adam
+  lr: 0.0001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+
+lambda_c: 0.3
+stride: 5
+ds: 1
+
+
+#
+exp_name: diffusion_ks_nu0p35
+name_weigths_to_load: null
