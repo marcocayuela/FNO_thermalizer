@@ -43,26 +43,34 @@ n_rollout_train: 1
 stride: 1
 frame_skip: 4  # effective dt = 4 * 0.015s = 0.06s (native dt=0.015s)
 
-# Same architecture as the frame_skip=1 baseline (config_command_emul_euler.yaml)
-# on purpose -- this experiment isolates the timestep as the only changed
-# variable, not conflated with config_command_emul_euler_wide.yaml's
-# modes_x/modes_y bump (a separate, independent hypothesis about the
-# blurring failure mode). layers_mlp[0]/[-1] must equal width (48).
+# Smaller than the frame_skip=1 baseline on purpose ("smaller-A": width
+# 48->32, hidden_proj 96->64 -- ~4.7M params vs ~10.7M) -- this experiment
+# only needs a first qualitative read on whether a coarser timestep induces
+# genuine divergence, not a fully-scaled model; a smaller width/hidden_proj
+# means faster batches (both mean fewer channels through the FFT/pointwise
+# convs, cf. fno/fno_2D.py) without touching modes_x/modes_y (24, same as
+# the baseline) so this isolates the timestep as the changed variable, not
+# conflated with config_command_emul_euler_wide.yaml's modes bump (a
+# separate, independent hypothesis about the blurring failure mode).
+# layers_mlp[0]/[-1] must equal width (32) here.
 modes_x: 24
 modes_y: 24
 kernel_size: 1
 n_layers: 4
-width: 48
-hidden_proj: 96
+width: 32
+hidden_proj: 64
 mlp: true
-layers_mlp: [48, 96, 48]
+layers_mlp: [32, 64, 32]
 padding: 16
 tau: 0.00001
 prediction_mode: state
 
-# Training parameters -- same budget as the baseline.
+# Training parameters -- batch_size raised 4->8 (fewer, bigger batches per
+# epoch -- the actual dominant cost at 15min/epoch on the frame_skip=1
+# baseline was batch COUNT, not per-batch compute) for faster iteration;
+# same epoch budget as the baseline otherwise.
 num_epochs: 300
-batch_size: 4
+batch_size: 8
 num_workers: 2
 loss_fn: relative_rmse
 optimizer:
