@@ -82,12 +82,20 @@ def load_diffusion_euler(run_dir, device):
     return diffusion.to(device).eval(), cfg
 
 
-def load_gt_trajectory_euler(data_dir, val_test_file, traj_idx, mean, std):
+def load_gt_trajectory_euler(data_dir, val_test_file, traj_idx, mean, std, frame_skip=1):
     """Returns the NORMALIZED trajectory (T, H, W, 4) -- same space the
     emulator/diffusion corrector operate in (cf. training/euler_dataset.py),
-    so it can be fed to x0/compared against rollout() output directly."""
+    so it can be fed to x0/compared against rollout() output directly.
+
+    frame_skip must match the emulator's own training-time frame_skip (cf.
+    training/euler_dataset.py::LazyEulerDataset) -- an emulator trained to
+    predict frame_skip native frames ahead per call produces a rollout at
+    that coarser cadence, so the GT it's compared against must be
+    subsampled the same way, or every comparison is off by a growing
+    temporal offset."""
     path = os.path.join(data_dir, val_test_file)
     full, gamma = load_single_trajectory(path, traj_idx)
+    full = full[::frame_skip]
     full = (full - mean) / std
     return torch.from_numpy(full).float(), gamma
 
@@ -269,13 +277,14 @@ def main():
     emulator, emul_cfg = load_emulator_fno_euler(args.emulator_run, device)
     diffusion, diff_cfg = load_diffusion_euler(args.diffusion_run, device)
     prediction_mode = emul_cfg.get("prediction_mode", "state")
+    frame_skip = emul_cfg.get("frame_skip", 1)
     mean = np.array(emul_cfg["field_mean"], dtype=np.float32)
     std = np.array(emul_cfg["field_std"], dtype=np.float32)
-    print(f"  field order: {FIELD_ORDER}", flush=True)
+    print(f"  field order: {FIELD_ORDER}  frame_skip: {frame_skip}", flush=True)
     print(f"  mean={mean}  std={std}", flush=True)
 
     print("Loading GT trajectory...", flush=True)
-    gt, gamma = load_gt_trajectory_euler(args.data_dir, args.val_test_file, args.traj_idx, mean, std)
+    gt, gamma = load_gt_trajectory_euler(args.data_dir, args.val_test_file, args.traj_idx, mean, std, frame_skip=frame_skip)
     print(f"  gamma={gamma}  shape={tuple(gt.shape)}", flush=True)
     n_steps = min(args.rollout_steps, gt.shape[0] - 1)
     x0 = gt[0].unsqueeze(0).to(device)

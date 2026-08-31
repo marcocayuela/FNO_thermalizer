@@ -36,8 +36,17 @@ timesteps: 1000
 class_mlp_layers: [96, 192, 1000]
 noise_sampling_coeff: 0.3
 
-# Training parameters
-num_epochs: 300
+# Training parameters -- RESUMING from the first run's TIMEOUT at epoch
+# 165/300 (loss still decreasing steadily there, unlike the emulator's
+# plateaued test loss -- worth actually finishing this one). num_epochs and
+# scheduler.T_max are set to the REMAINING budget (135 + a small buffer),
+# not 300: execute_experience() only restores model_state_dict on resume,
+# not optimizer/scheduler state (a real gap in this codebase, cf. the
+# spawned background task on name_weights_to_load), so a freshly-built
+# CosineAnnealingLR with T_max=300 would restart at a high LR instead of
+# continuing the anneal -- using the remaining-epoch count as T_max instead
+# gives a clean decay to eta_min over what's left, avoiding that LR jump.
+num_epochs: 140
 batch_size: 4
 num_workers: 2
 loss_score: mse
@@ -48,11 +57,11 @@ optimizer:
   wd: 100.
 scheduler:
   name: cosine_annealing
-  T_max: 300
+  T_max: 140
   eta_min: 0.000001
 
 lambda_c: 0.3
 
 #
 exp_name: diffusion_euler_gamma1.4
-name_weigths_to_load: null
+name_weights_to_load: min_train_loss.pth

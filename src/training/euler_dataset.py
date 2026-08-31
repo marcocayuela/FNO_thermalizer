@@ -117,7 +117,7 @@ class LazyEulerDataset(Dataset):
     what Trainer.train_epoch()'s state-mode rollout loop iterates over.
     """
 
-    def __init__(self, h5_path, traj_indices, k, n_rollout, stride, mean, std):
+    def __init__(self, h5_path, traj_indices, k, n_rollout, stride, mean, std, frame_skip=1):
         self.h5_path = h5_path
         self.traj_indices = list(traj_indices)
         self.k = k
@@ -125,11 +125,23 @@ class LazyEulerDataset(Dataset):
         self.stride = stride
         self.mean = mean
         self.std = std
+        # frame_skip > 1: the model is trained/predicts across frame_skip
+        # native dataset frames at once (native dt=0.015s for
+        # euler_multi_quadrants_openBC) instead of one -- a coarser
+        # effective timestep. Single-step extrapolation error grows with
+        # the size of the step, so this is the knob for making the
+        # emulator's own rollout actually prone to numerical divergence
+        # (negative density/energy -> NaN) within the ~100-native-frame
+        # trajectory budget, rather than just drifting/blurring -- cf. the
+        # frame_skip=1 baseline run, which stayed finite for all 99 steps
+        # but was badly over-smoothed relative to GT.
+        self.frame_skip = frame_skip
         self._file = None
 
         _, _, T, H, W = _peek_file_info(h5_path)
         self.T, self.H, self.W = T, H, W
-        self.n_per_traj = max(0, (T - k - n_rollout) // stride + 1)
+        span = (k + n_rollout - 1) * frame_skip + 1
+        self.n_per_traj = max(0, (T - span) // stride + 1)
 
     def __len__(self):
         return self.n_per_traj * len(self.traj_indices)
@@ -157,12 +169,13 @@ class LazyEulerDataset(Dataset):
         traj_pos, window_pos = divmod(idx, self.n_per_traj)
         traj_idx = self.traj_indices[traj_pos]
         start = window_pos * self.stride
-        end = start + self.k + self.n_rollout
+        span = (self.k + self.n_rollout - 1) * self.frame_skip + 1
+        end = start + span
 
         f = self._file
-        energy = f["t0_fields"]["energy"][traj_idx, start:end]
-        density = f["t0_fields"]["density"][traj_idx, start:end]
-        momentum = f["t1_fields"]["momentum"][traj_idx, start:end]
+        energy = f["t0_fields"]["energy"][traj_idx, start:end:self.frame_skip]
+        density = f["t0_fields"]["density"][traj_idx, start:end:self.frame_skip]
+        momentum = f["t1_fields"]["momentum"][traj_idx, start:end:self.frame_skip]
 
         window = np.empty((self.k + self.n_rollout, self.H, self.W, N_CHANNELS), dtype=np.float32)
         window[..., 0] = energy
@@ -224,9 +237,15 @@ class LazyEulerFirstSnapshot(Dataset):
 
 
 def _build_lazy_loader(dataset_cls, h5_paths_and_indices, extra_args, mean, std,
-                       batch_size, num_workers, shuffle):
+                       batch_size, num_workers, shuffle, extra_kwargs=None):
+    # extra_kwargs (not just more positional extra_args): LazyEulerDataset's
+    # constructor has frame_skip AFTER mean/std (frame_skip=1) -- passing it
+    # positionally alongside extra_args here would silently shift into
+    # mean's slot instead (bit us once already). Keyword-only avoids that
+    # footgun regardless of where a given dataset class puts such trailing
+    # defaulted params.
     datasets = [
-        dataset_cls(path, traj_indices, *extra_args, mean, std)
+        dataset_cls(path, traj_indices, *extra_args, mean, std, **(extra_kwargs or {}))
         for path, traj_indices in h5_paths_and_indices
     ]
     ds = ConcatDataset(datasets)
@@ -245,6 +264,7 @@ def load_euler_data(config, data_root):
     batch_size = config["batch_size"]
     num_workers = config.get("num_workers", 2)
     stride = config.get("stride", 1)
+    frame_skip = config.get("frame_skip", 1)
 
     train_paths = [os.path.join(data_root, f) for f in config["train_files"]]
     val_test_path = os.path.join(data_root, config["val_test_file"])
@@ -279,11 +299,14 @@ def load_euler_data(config, data_root):
 
     train_sources = [(path, range(info[1])) for path, info in zip(train_paths, train_infos)]
     train_ds, train_loader = _build_lazy_loader(
-        LazyEulerDataset, train_sources, (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=True)
+        LazyEulerDataset, train_sources, (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=True,
+        extra_kwargs={"frame_skip": frame_skip})
     val_ds, val_loader = _build_lazy_loader(
-        LazyEulerDataset, [(val_test_path, val_idx)], (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=False)
+        LazyEulerDataset, [(val_test_path, val_idx)], (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=False,
+        extra_kwargs={"frame_skip": frame_skip})
     test_ds, test_loader = _build_lazy_loader(
-        LazyEulerDataset, [(val_test_path, test_idx)], (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=False)
+        LazyEulerDataset, [(val_test_path, test_idx)], (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=False,
+        extra_kwargs={"frame_skip": frame_skip})
 
     stats = {
         "gamma": gammas[0],
@@ -295,6 +318,7 @@ def load_euler_data(config, data_root):
         "n_traj_train": n_traj_train,
         "val_traj_idx": val_idx,
         "test_traj_idx": test_idx,
+        "frame_skip": frame_skip,
     }
 
     return (train_loader, val_loader, test_loader,

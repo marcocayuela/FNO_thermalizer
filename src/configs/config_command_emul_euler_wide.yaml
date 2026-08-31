@@ -1,0 +1,69 @@
+########### EMULATOR (euler_multi_quadrants_openBC, gamma=1.4 "Dry_air") -- WIDER SPECTRUM #############
+seed: 42
+device: cuda
+
+# Variant of config_command_emul_euler.yaml with modes_x/modes_y raised
+# 24 -> 32. Rationale: correction_eval_euler.py's first real run showed the
+# base emulator (modes=24) systematically over-smooths -- density snapshots
+# visibly blurrier than GT from t~24 onward, shock-sharpness proxy
+# (max|grad(density)|) consistently below GT, momentum spectrum below GT
+# especially at high k. FNO's spectral conv can only mix information within
+# modes_x/modes_y globally (the local `w` conv path is the only source of
+# higher-frequency content) -- 24 retained modes on a 512x512 grid with
+# genuine shock/contact-discontinuity structure is a plausible bottleneck.
+# This is a pure hyperparameter change, same architecture/dataset/training
+# pipeline otherwise -- separate exp_name so it doesn't overwrite the
+# modes=24 baseline run, for a direct A/B comparison via correction_eval_euler.py.
+exp_dir: euler_multi_quadrants_openBC
+train_files:
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_test_file: euler_multi_quadrants_openBC/data/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_traj_idx: [0, 1, 2, 3, 4]
+test_traj_idx: [5, 6, 7, 8, 9]
+
+n_channels: 4  # energy, density, momentum_x, momentum_y (cf. euler_dataset.FIELD_ORDER)
+k: 1           # 1 input frame -> absolute-state prediction (cf. prediction_mode below)
+n_rollout_train: 2
+stride: 1
+
+# layers_mlp[0]/[-1] must equal width (48) -- cf. config_command_emul_euler.yaml's comment.
+modes_x: 32
+modes_y: 32
+kernel_size: 1
+n_layers: 4
+width: 48
+hidden_proj: 96
+mlp: true
+layers_mlp: [48, 96, 48]
+padding: 16
+tau: 0.00001
+prediction_mode: state
+
+# Training parameters -- same budget as the modes=24 baseline. Note: the
+# baseline's OWN test loss had already plateaued by ~epoch 30-40 (out of the
+# 96 it reached before its 24h TIMEOUT) -- so this isn't "give it more
+# epochs", it's "give it more capacity to represent fine structure";
+# num_epochs is kept the same for a fair comparison at a similar training
+# budget, not because more epochs alone were expected to fix the baseline.
+num_epochs: 300
+batch_size: 4
+num_workers: 2
+loss_fn: relative_rmse
+optimizer:
+  type: adam
+  lr: 0.001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 300
+  eta_min: 0.000001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse
+  - relative_mae
+
+#
+exp_name: fno_euler_gamma1.4_wide
+name_weights_to_load: null

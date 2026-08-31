@@ -1,0 +1,84 @@
+########### EMULATOR (euler_multi_quadrants_openBC, gamma=1.4 "Dry_air") -- 4x TIMESTEP #############
+seed: 42
+device: cuda
+
+# Variant of config_command_emul_euler.yaml with frame_skip: 4 instead of 1
+# (cf. training/euler_dataset.py::LazyEulerDataset) -- the model is trained
+# to predict 4 native dataset frames ahead per call (effective dt = 4*0.015
+# = 0.06s) instead of 1 native frame (dt=0.015s). Rationale: the frame_skip=1
+# baseline never diverged over 99 rollout steps (correction_eval_euler.py's
+# first real run) but was badly over-smoothed relative to GT -- a blurring
+# failure mode the diffusion corrector (trained to detect/remove ADDED
+# noise) structurally can't fix, since it isn't the kind of corruption it
+# was trained on. A coarser per-step timestep makes single-step
+# extrapolation error much larger, which should make the autoregressive
+# rollout actually prone to genuine numerical divergence (negative
+# density/energy -> NaN, a real failure mode for compressible Euler, unlike
+# KS's bounded chaos) -- i.e. a Kolmogorov-style "emulator diverges without
+# correction" story, which the diffusion corrector's noise-classifier is
+# actually built to catch and correct, rather than the smoothing/sharpness
+# problem the frame_skip=1 baseline showed instead.
+#
+# n_rollout_train is also dropped to 1 (from 2): the weakest possible
+# rollout-consistency regularization, so the emulator isn't explicitly
+# trained to damp multi-step error accumulation -- consistent with wanting
+# it prone to drift/divergence rather than robust to it.
+#
+# Note: NO new diffusion corrector is needed for this variant -- the
+# existing diffusion_euler_gamma1.4 run (or its continuation) operates
+# purely on single spatial snapshots (cf. LazyEulerFirstSnapshot), agnostic
+# to the emulator's own temporal cadence. Re-use it as-is via
+# correction_eval_euler.py --diffusion_run pointing at that same run dir.
+exp_dir: euler_multi_quadrants_openBC
+train_files:
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_test_file: euler_multi_quadrants_openBC/data/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_traj_idx: [0, 1, 2, 3, 4]
+test_traj_idx: [5, 6, 7, 8, 9]
+
+n_channels: 4  # energy, density, momentum_x, momentum_y (cf. euler_dataset.FIELD_ORDER)
+k: 1           # 1 input frame -> absolute-state prediction (cf. prediction_mode below)
+n_rollout_train: 1
+stride: 1
+frame_skip: 4  # effective dt = 4 * 0.015s = 0.06s (native dt=0.015s)
+
+# Same architecture as the frame_skip=1 baseline (config_command_emul_euler.yaml)
+# on purpose -- this experiment isolates the timestep as the only changed
+# variable, not conflated with config_command_emul_euler_wide.yaml's
+# modes_x/modes_y bump (a separate, independent hypothesis about the
+# blurring failure mode). layers_mlp[0]/[-1] must equal width (48).
+modes_x: 24
+modes_y: 24
+kernel_size: 1
+n_layers: 4
+width: 48
+hidden_proj: 96
+mlp: true
+layers_mlp: [48, 96, 48]
+padding: 16
+tau: 0.00001
+prediction_mode: state
+
+# Training parameters -- same budget as the baseline.
+num_epochs: 300
+batch_size: 4
+num_workers: 2
+loss_fn: relative_rmse
+optimizer:
+  type: adam
+  lr: 0.001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 300
+  eta_min: 0.000001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse
+  - relative_mae
+
+#
+exp_name: fno_euler_gamma1.4_dt4
+name_weights_to_load: null

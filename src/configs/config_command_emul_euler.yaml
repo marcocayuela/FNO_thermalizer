@@ -66,4 +66,4 @@ metrics:
 
 #
 exp_name: fno_euler_gamma1.4
-name_weigths_to_load: null
+name_weights_to_load: null
