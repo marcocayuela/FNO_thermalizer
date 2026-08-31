@@ -1,0 +1,86 @@
+########### EMULATOR (euler_multi_quadrants_openBC, gamma=1.4 "Dry_air") -- DELTA MODE #############
+seed: 42
+device: cuda
+
+# Variant of config_command_emul_euler.yaml with prediction_mode: delta
+# instead of state -- native dt (frame_skip: 1, NOT combined with
+# config_command_emul_euler_dt4.yaml's timestep experiment, to isolate
+# prediction mode as the single changed variable).
+#
+# Rationale: the frame_skip=1 / state-mode baseline never diverged over 99
+# rollout steps -- state-mode predicts the absolute next state directly,
+# which acts as an implicit pull back toward "what a plausible state looks
+# like" at every single call, damping runaway drift at the cost of
+# progressive over-smoothing (cf. correction_eval_euler.py's first real
+# run). Delta mode instead predicts an INCREMENT added onto the current
+# state -- nothing pulls the accumulated state back toward the training
+# manifold, so a small systematic bias in the increment can compound
+# unboundedly over a rollout. This is exactly the training/eval choice
+# behind Kolmogorov's own most divergence-prone configs in this project
+# (cf. evaluation/correction_eval.py's DEFAULT_RUNS["fno_delta"], which
+# reliably diverges at long rollout horizons) -- reproducing that mechanism
+# here, rather than a bigger per-step timestep (config_command_emul_euler_dt4.yaml's
+# separate hypothesis), is the more direct match to how Kolmogorov's own
+# divergence actually arises.
+#
+# Evaluate this with evaluation/correction_eval_euler.py --rollout_steps
+# well above 99 (e.g. 500-2000): rollout() only needs GT for the very first
+# frame (x0) and the energy-based divergence check needs no GT at all, so a
+# genuine long-horizon divergence test past this dataset's ~100-native-frame
+# trajectories is possible (see that script's own --rollout_steps help and
+# the new full-length energy curve plot it produces) -- necessary here since
+# whatever compounding drift delta mode introduces may need more than 99
+# steps to visibly diverge.
+#
+# No new diffusion corrector needed here either -- same reasoning as
+# config_command_emul_euler_dt4.yaml (LazyEulerFirstSnapshot is dt/mode-agnostic).
+exp_dir: euler_multi_quadrants_openBC
+train_files:
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_test_file: euler_multi_quadrants_openBC/data/valid/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+val_traj_idx: [0, 1, 2, 3, 4]
+test_traj_idx: [5, 6, 7, 8, 9]
+
+n_channels: 4  # energy, density, momentum_x, momentum_y (cf. euler_dataset.FIELD_ORDER)
+k: 1
+n_rollout_train: 1  # weak rollout-consistency regularization, same reasoning as the dt4 config
+stride: 1
+frame_skip: 1  # native dt (0.015s) -- isolates prediction_mode as the changed variable
+
+# Same "smaller-A" scale as config_command_emul_euler_dt4.yaml for fast
+# iteration (~4.7M params) -- layers_mlp[0]/[-1] must equal width (32).
+modes_x: 24
+modes_y: 24
+kernel_size: 1
+n_layers: 4
+width: 32
+hidden_proj: 64
+mlp: true
+layers_mlp: [32, 64, 32]
+padding: 16
+tau: 0.00001
+prediction_mode: delta
+
+# Training parameters -- batch_size=8, same reasoning as the dt4 config.
+num_epochs: 300
+batch_size: 8
+num_workers: 2
+loss_fn: relative_rmse
+optimizer:
+  type: adam
+  lr: 0.001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 300
+  eta_min: 0.000001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse
+  - relative_mae
+
+#
+exp_name: fno_euler_gamma1.4_delta
+name_weights_to_load: null

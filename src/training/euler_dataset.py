@@ -111,13 +111,20 @@ class LazyEulerDataset(Dataset):
     metadata (T, H, W).
 
     Returns (x, y): x is the k input frames stacked as channels,
-    (H, W, k*N_CHANNELS); y is the n_rollout target frames in absolute
-    state, (n_rollout, H, W, N_CHANNELS) -- with k=1, x reduces to exactly
-    the (H, W, N_CHANNELS) shape EmulatorFNO/Trainer expect, and y matches
-    what Trainer.train_epoch()'s state-mode rollout loop iterates over.
+    (H, W, k*N_CHANNELS). y depends on prediction_mode: "state" (default) ->
+    the n_rollout target frames in absolute state, (n_rollout, H, W,
+    N_CHANNELS), matching what Trainer.train_epoch()'s state-mode rollout
+    loop iterates over; any other value -> DELTAS between consecutive
+    frames (y[i] = frame[k+i] - frame[k+i-1], the last input frame being
+    frame[k-1]) -- Trainer.train_epoch()'s delta-mode branch compares the
+    model's raw output directly against the target with no denormalization
+    step of its own, so the target must already be a delta in the SAME
+    normalized space x is in, exactly mirroring
+    dataset_manager.py::SequenceDataset's own state-vs-delta convention.
     """
 
-    def __init__(self, h5_path, traj_indices, k, n_rollout, stride, mean, std, frame_skip=1):
+    def __init__(self, h5_path, traj_indices, k, n_rollout, stride, mean, std, frame_skip=1,
+                 prediction_mode="state"):
         self.h5_path = h5_path
         self.traj_indices = list(traj_indices)
         self.k = k
@@ -125,6 +132,7 @@ class LazyEulerDataset(Dataset):
         self.stride = stride
         self.mean = mean
         self.std = std
+        self.prediction_mode = prediction_mode
         # frame_skip > 1: the model is trained/predicts across frame_skip
         # native dataset frames at once (native dt=0.015s for
         # euler_multi_quadrants_openBC) instead of one -- a coarser
@@ -184,7 +192,10 @@ class LazyEulerDataset(Dataset):
         window = (window - self.mean) / self.std
 
         x = window[: self.k].transpose(1, 2, 0, 3).reshape(self.H, self.W, self.k * N_CHANNELS)
-        y = window[self.k:]
+        if self.prediction_mode == "state":
+            y = window[self.k:]
+        else:
+            y = window[self.k:] - window[self.k - 1: self.k + self.n_rollout - 1]
         return torch.from_numpy(x.copy()).float(), torch.from_numpy(y.copy()).float()
 
 
@@ -265,6 +276,7 @@ def load_euler_data(config, data_root):
     num_workers = config.get("num_workers", 2)
     stride = config.get("stride", 1)
     frame_skip = config.get("frame_skip", 1)
+    prediction_mode = config.get("prediction_mode", "state")
 
     train_paths = [os.path.join(data_root, f) for f in config["train_files"]]
     val_test_path = os.path.join(data_root, config["val_test_file"])
@@ -300,13 +312,13 @@ def load_euler_data(config, data_root):
     train_sources = [(path, range(info[1])) for path, info in zip(train_paths, train_infos)]
     train_ds, train_loader = _build_lazy_loader(
         LazyEulerDataset, train_sources, (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=True,
-        extra_kwargs={"frame_skip": frame_skip})
+        extra_kwargs={"frame_skip": frame_skip, "prediction_mode": prediction_mode})
     val_ds, val_loader = _build_lazy_loader(
         LazyEulerDataset, [(val_test_path, val_idx)], (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=False,
-        extra_kwargs={"frame_skip": frame_skip})
+        extra_kwargs={"frame_skip": frame_skip, "prediction_mode": prediction_mode})
     test_ds, test_loader = _build_lazy_loader(
         LazyEulerDataset, [(val_test_path, test_idx)], (k, n_rollout, stride), mean, std, batch_size, num_workers, shuffle=False,
-        extra_kwargs={"frame_skip": frame_skip})
+        extra_kwargs={"frame_skip": frame_skip, "prediction_mode": prediction_mode})
 
     stats = {
         "gamma": gammas[0],
@@ -319,6 +331,7 @@ def load_euler_data(config, data_root):
         "val_traj_idx": val_idx,
         "test_traj_idx": test_idx,
         "frame_skip": frame_skip,
+        "prediction_mode": prediction_mode,
     }
 
     return (train_loader, val_loader, test_loader,

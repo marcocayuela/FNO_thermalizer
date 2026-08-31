@@ -43,7 +43,7 @@ from training.fno_training_euler import EmulatorFNO
 from evaluation.correction_eval import (
     load_config, load_checkpoint_dict, rollout, maybe_correct,
     _is_diverged, _kinetic_energy_scalar, relative_l2_curve,
-    compute_classical_energy_spectrum,
+    compute_classical_energy_spectrum, kinetic_energy_curve,
 )
 
 DENSITY_IDX = FIELD_ORDER.index("density")
@@ -171,6 +171,31 @@ def draw_density_snapshots(name, gt_traj, traj_no, traj_with, std, mean, out_pat
     plt.close()
 
 
+def draw_full_energy_curve(name, ke_no_corr, ke_with_corr, gt_ke, gt_len, out_path):
+    """Energy-proxy curve (sum-of-squares-across-channels, cf.
+    correction_eval.kinetic_energy_curve) over the FULL rollout -- unlike
+    the other diagnostics here, this one is NOT truncated to the length of
+    the available GT trajectory: it's the only plot that can show a genuine
+    divergence happening past the ~100-native-frame GT window (rollout()
+    itself only needs GT for x0, cf. its own docstring). gt_len marks where
+    the GT trajectory ran out, for reference -- GT's own energy is plotted
+    only up to that point, and a vertical line marks it on the full range."""
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.plot(np.arange(len(gt_ke)), gt_ke, color="black", lw=2, label="GT")
+    ax.plot(np.arange(len(ke_no_corr)), ke_no_corr, color="tab:red", ls="--", label="without correction")
+    ax.plot(np.arange(len(ke_with_corr)), ke_with_corr, color="tab:blue", label="with correction")
+    ax.axvline(gt_len, color="gray", ls=":", lw=1, label="GT trajectory ends")
+    ax.set_xlabel("rollout step")
+    ax.set_ylabel(r"energy proxy $\frac{1}{2}\langle\sum_c x_c^2\rangle$")
+    ax.set_yscale("log")
+    ax.set_title(f"Energy over the full rollout — {name}")
+    ax.legend(fontsize=9)
+    ax.grid(alpha=0.3, which="both")
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def draw_error_curve(name, error_no_corr, error_with_corr, out_path):
     fig, ax = plt.subplots(figsize=(7, 4.5))
     t = np.arange(len(error_no_corr))
@@ -259,7 +284,10 @@ def main():
     parser.add_argument("--emulator_run", required=True)
     parser.add_argument("--diffusion_run", required=True)
     parser.add_argument("--rollout_steps", type=int, default=99,
-                        help="max 99 for this dataset -- each trajectory only has 100 GT frames")
+                        help="each GT trajectory only has 100 frames (99 steps), but this is NOT a hard "
+                        "cap -- a value above 99 runs a genuine long-horizon free rollout past the "
+                        "available GT (only needed for x0), truncating GT-relative diagnostics to what "
+                        "GT covers while the full-length energy curve still shows the whole rollout")
     parser.add_argument("--divergence_factor", type=float, default=100.0)
     parser.add_argument("--s_init", type=int, default=7)
     parser.add_argument("--s_stop", type=int, default=3)
@@ -286,7 +314,22 @@ def main():
     print("Loading GT trajectory...", flush=True)
     gt, gamma = load_gt_trajectory_euler(args.data_dir, args.val_test_file, args.traj_idx, mean, std, frame_skip=frame_skip)
     print(f"  gamma={gamma}  shape={tuple(gt.shape)}", flush=True)
-    n_steps = min(args.rollout_steps, gt.shape[0] - 1)
+    # Unlike an earlier version of this script, n_steps is NOT capped to the
+    # GT trajectory's own length: rollout() only needs GT for x0 (cf. its
+    # own docstring) and _is_diverged()'s energy-based check needs no GT at
+    # all, so a genuine long-horizon divergence test (well past this
+    # dataset's ~100-native-frame trajectories) is possible -- mirrors
+    # correction_eval.py's own rollout, which likewise runs the full
+    # requested length and only truncates the GT-relative diagnostics
+    # (error curve, boundary/interior error, spectrum, snapshots) to
+    # whatever GT is actually available.
+    n_steps = args.rollout_steps
+    if n_steps > gt.shape[0] - 1:
+        print(f"  Note: rollout requested ({n_steps}) > available GT length ({gt.shape[0] - 1} steps). "
+              f"The rollout will run the full {n_steps} steps; GT-relative diagnostics (error curve, "
+              f"boundary/interior error, spectrum, density snapshots) are truncated to what GT covers -- "
+              f"the full-length energy curve is the one diagnostic that still covers the whole rollout, "
+              f"since it needs no GT beyond x0.", flush=True)
     x0 = gt[0].unsqueeze(0).to(device)
 
     print(f"Rolling out WITHOUT correction (up to {n_steps} steps, "
@@ -306,6 +349,16 @@ def main():
     gt_c, traj_no_c, traj_with_c = gt[:common_len], traj_no[:common_len], traj_with[:common_len]
 
     print("Computing diagnostics + figures...", flush=True)
+
+    # Full-length energy curve FIRST -- the one diagnostic not truncated to
+    # GT length, so a divergence past the available GT trajectory is still
+    # visible (cf. the n_steps note above).
+    ke_no_full = kinetic_energy_curve(traj_no)
+    ke_with_full = kinetic_energy_curve(traj_with)
+    gt_ke_full = kinetic_energy_curve(gt)
+    draw_full_energy_curve("euler_gamma%.1f" % gamma, ke_no_full, ke_with_full, gt_ke_full, gt.shape[0] - 1,
+                           os.path.join(args.out_dir, "energy_curve_full.png"))
+
     error_no = relative_l2_curve(traj_no_c, gt_c)
     error_with = relative_l2_curve(traj_with_c, gt_c)
     draw_error_curve("euler_gamma%.1f" % gamma, error_no, error_with,
@@ -329,9 +382,16 @@ def main():
                  os.path.join(args.out_dir, "spectrum.png"))
 
     np.savez(os.path.join(args.out_dir, "rollout_data.npz"),
+            # Spatial fields kept at common_len (GT-truncated) -- saving the
+            # full rollout's fields too would bloat this file badly for a
+            # long-horizon divergence run (e.g. 2000 steps x 512x512x4
+            # float32 ~ 8GB); the full-length signal that matters for
+            # divergence (energy, not spatial detail) is saved separately
+            # below, at negligible size.
             gt=gt_c.numpy(), traj_no=traj_no_c.numpy(), traj_with=traj_with_c.numpy(),
-            mean=mean, std=std, div_step=div_step,
+            mean=mean, std=std, div_step=div_step, n_steps_requested=n_steps,
             error_no=error_no, error_with=error_with,
+            ke_no_full=ke_no_full, ke_with_full=ke_with_full, gt_ke_full=gt_ke_full,
             correction_flags=tracker_with["correction_flags"], noise_levels=tracker_with["noise_levels"])
 
     print(f"Done. Figures + data saved to {args.out_dir}/", flush=True)
