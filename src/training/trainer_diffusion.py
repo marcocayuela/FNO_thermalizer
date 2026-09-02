@@ -80,7 +80,9 @@ class TrainerDiffusion():
         headers = ["Epoch", "training_loss", "loss_score", "loss_cat", "LR", "Time"]
         
         csv_path = os.path.join(self.exp_dir, self.exp_name, 'logs', 'metrics.csv')
-        self.logger = MetricLogger(csv_path, headers)
+        # resume=True only when actually continuing from a checkpoint
+        # (start_epoch>1) -- cf. MetricLogger's own docstring.
+        self.logger = MetricLogger(csv_path, headers, resume=self.start_epoch > 1)
 
         self.min_train_loss = 1e18
     
