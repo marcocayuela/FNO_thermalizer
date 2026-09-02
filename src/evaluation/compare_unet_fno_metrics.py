@@ -41,11 +41,35 @@ from evaluation.plot_training_metrics import read_metrics
 METRIC_COLS = ["rmse", "mae", "relative_rmse", "relative_mae"]
 
 
+def _last_run_block(cols):
+    """Older thermalizer runs' logs/metrics.csv can hold MULTIPLE
+    concatenated training sessions: MetricLogger used to always append
+    (fixed in training/metric_logger.py, but that doesn't retroactively
+    clean up files written before the fix), so re-launching a script
+    against an exp_name whose metrics.csv already existed silently glued a
+    fresh epoch-1-onward block onto whatever history was already there, no
+    marker between sessions. Detect the start of the LAST such block (the
+    last place Epoch resets to a value <= the previous row's) and slice
+    every column to keep only that block -- so a "best epoch" is always
+    relative to the run that's actually being asked about, not a stale
+    unrelated one mixed into the same file."""
+    epochs = cols["Epoch"]
+    start = 0
+    for i in range(1, len(epochs)):
+        if epochs[i] <= epochs[i - 1]:
+            start = i
+    if start > 0:
+        print(f"  Note: logs/metrics.csv holds {start} row(s) from an earlier, unrelated "
+              f"session before this one (Epoch resets at row {start}) -- ignoring them.", flush=True)
+    return {k: v[start:] for k, v in cols.items()}
+
+
 def summarize_run(run_dir, model):
     csv_path = os.path.join(run_dir, "logs", "metrics.csv")
     cols = read_metrics(csv_path)
     if not cols or "Epoch" not in cols:
         raise SystemExit(f"metrics.csv illisible/vide : {csv_path}")
+    cols = _last_run_block(cols)
 
     te_loss = cols.get("Te loss")
     best_idx = min(range(len(te_loss)), key=lambda i: te_loss[i]) if te_loss else len(cols["Epoch"]) - 1
