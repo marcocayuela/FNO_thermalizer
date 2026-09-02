@@ -247,6 +247,87 @@ class LazyEulerFirstSnapshot(Dataset):
         return torch.from_numpy(frame.copy()).float()
 
 
+class LazyEulerCorrectionDataset(Dataset):
+    """Residual-corrector training dataset (cf.
+    training/generate_euler_correction_data.py, training/ResidualCorrectorModel.py):
+    pairs the emulator's OWN predicted rollout state at step s against the
+    TRUE state at that same step, read straight from the original raw Euler
+    file it came from (per-row provenance -- source_files/source_traj_idx --
+    stored in the generated correction-data file itself, so this class is
+    self-contained given just that one file + data_root). Returns
+    (corrupted, true, step) per __getitem__, both frames in the SAME
+    normalized space (mean/std baked into the generated file's own attrs).
+
+    Unlike LazyEulerDataset/LazyEulerFirstSnapshot, this does NOT read
+    windows from the raw file directly -- the "corrupted" half comes from a
+    SEPARATE, already-precomputed rollout file (running the emulator is the
+    expensive part, done once by generate_euler_correction_data.py, not
+    repeated every epoch)."""
+
+    def __init__(self, correction_h5_path, data_root, stride=1, max_step=None):
+        self.correction_h5_path = correction_h5_path
+        self.data_root = data_root
+        self.stride = stride
+        self._file = None
+        self._true_files = {}  # source rel_path -> open h5py.File, per worker
+
+        with h5py.File(correction_h5_path, "r") as f:
+            self.n_traj, self.n_frames, self.H, self.W, _ = f["predicted"].shape
+            self.mean = f.attrs["field_mean"]
+            self.std = f.attrs["field_std"]
+            self.frame_skip = int(f.attrs.get("frame_skip", 1))
+            self.source_files = [s.decode() if isinstance(s, bytes) else s for s in f["source_files"][:]]
+            self.source_traj_idx = f["source_traj_idx"][:]
+
+        last_step = (self.n_frames - 1) if max_step is None else min(max_step, self.n_frames - 1)
+        self.steps = list(range(0, last_step + 1, stride))
+        self.n_per_traj = len(self.steps)
+
+    def __len__(self):
+        return self.n_per_traj * self.n_traj
+
+    def __getstate__(self):
+        # Same rationale as LazyEulerDataset -- h5py handles don't pickle,
+        # each DataLoader worker reopens its own on first access.
+        state = self.__dict__.copy()
+        state["_file"] = None
+        state["_true_files"] = {}
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def _ensure_open(self):
+        if self._file is None:
+            self._file = h5py.File(self.correction_h5_path, "r")
+
+    def _true_file(self, rel_path):
+        if rel_path not in self._true_files:
+            self._true_files[rel_path] = h5py.File(os.path.join(self.data_root, rel_path), "r")
+        return self._true_files[rel_path]
+
+    def __getitem__(self, idx):
+        self._ensure_open()
+        traj_pos, step_pos = divmod(idx, self.n_per_traj)
+        step = self.steps[step_pos]
+
+        corrupted = self._file["predicted"][traj_pos, step]  # already normalized, (H, W, N_CHANNELS)
+
+        rel_path = self.source_files[traj_pos]
+        traj_idx = int(self.source_traj_idx[traj_pos])
+        tf = self._true_file(rel_path)
+        true_step = step * self.frame_skip
+        true_frame = np.empty((self.H, self.W, N_CHANNELS), dtype=np.float32)
+        true_frame[..., 0] = tf["t0_fields"]["energy"][traj_idx, true_step]
+        true_frame[..., 1] = tf["t0_fields"]["density"][traj_idx, true_step]
+        true_frame[..., 2:4] = tf["t1_fields"]["momentum"][traj_idx, true_step]
+        true_frame = (true_frame - self.mean) / self.std
+
+        return (torch.from_numpy(corrupted.copy()).float(),
+                torch.from_numpy(true_frame.copy()).float(),
+                step)
+
+
 def _build_lazy_loader(dataset_cls, h5_paths_and_indices, extra_args, mean, std,
                        batch_size, num_workers, shuffle, extra_kwargs=None):
     # extra_kwargs (not just more positional extra_args): LazyEulerDataset's

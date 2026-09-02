@@ -88,8 +88,13 @@ class FNO2D_classifier(nn.Module):
 
         if predict_class:
             # we do not apply softmax because cross-entropy loss already does
-            x_avg_pool = self.avg_pool(x).squeeze()
-            x_max_pool = self.max_pool(x).squeeze()
+            # Squeeze only the trailing H=1,W=1 spatial dims (bare .squeeze()
+            # also collapsed the batch dim whenever batch_size==1, turning
+            # (1,width) into (width,) and crashing cross_entropy downstream
+            # with a shape mismatch -- hit for real on a 25-sample dataset
+            # with batch_size=4, whose last batch has exactly 1 sample).
+            x_avg_pool = self.avg_pool(x).squeeze(-1).squeeze(-1)
+            x_max_pool = self.max_pool(x).squeeze(-1).squeeze(-1)
             y = torch.cat([x_avg_pool, x_max_pool], dim=-1)
             y = self.classifier(y)
 
