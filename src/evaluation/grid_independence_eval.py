@@ -43,6 +43,7 @@ import argparse
 import os
 import sys
 
+import h5py
 import numpy as np
 import torch
 import matplotlib
@@ -64,6 +65,46 @@ from evaluation.correction_eval import (
 RESOLUTION_TO_DS = {32: 4, 64: 2, 128: 1}
 
 
+def compute_norm_stats(data_dir, exp_dir, ratio, ds, prediction_mode):
+    """Replicates training/dataset_manager.py::DatasetManagerMulti's own
+    per-channel x_mean/x_std/y_mean/y_std computation EXACTLY (same
+    ratio/ds subsampling of every train_traj/*.h5 file, same
+    prediction_mode-dependent y target: state -> next frame, else -> delta
+    between consecutive frames) -- necessary because these models were
+    trained with normalize=True (DatasetManagerMulti's own default, cf.
+    dataset_manager.py:146), so evaluating them on raw un-normalized data is
+    a scale mismatch. This script's own first version hit exactly that bug:
+    UNet's relative_rmse came out >> 1 (garbage, fed input miles outside
+    its trained distribution) while FNO merely degraded, because FNO's
+    linear P/Q layers tolerate a scale mismatch far more gracefully than
+    UNet's stack of GroupNorm-based conv blocks.
+
+    Computed ONCE per model, at that model's OWN training ratio/ds -- these
+    are per-channel scalars describing a physical property of the flow
+    (mean/std of velocity and of its increments), not of whichever
+    resolution is being tested zero-shot, so the SAME stats are reused
+    across every tested resolution rather than recomputed per resolution.
+    """
+    sim_dir = os.path.join(data_dir, exp_dir, "train_traj")
+    sim_files = [os.path.join(sim_dir, f) for f in os.listdir(sim_dir) if f.endswith(".h5")]
+
+    all_x, all_y = [], []
+    for sim_file in sim_files:
+        with h5py.File(sim_file, "r") as f:
+            data = f["velocity_field"][()][::ratio, ::ds, ::ds]
+        tensor_data = torch.from_numpy(data).float()
+        all_x.append(tensor_data[:-1])
+        if prediction_mode == "state":
+            all_y.append(tensor_data[1:])
+        else:
+            all_y.append(tensor_data[1:] - tensor_data[:-1])
+
+    all_x = torch.cat(all_x, dim=0)
+    all_y = torch.cat(all_y, dim=0)
+    return (all_x.mean(dim=(0, 1, 2)), all_x.std(dim=(0, 1, 2)),
+            all_y.mean(dim=(0, 1, 2)), all_y.std(dim=(0, 1, 2)))
+
+
 def load_emulator_unet(run_dir, device):
     """Mirrors correction_eval.py::load_emulator_fno, for the UNet family
     (training/unet_training.py::EmulatorUNet) -- not in correction_eval.py
@@ -81,7 +122,7 @@ def load_emulator_unet(run_dir, device):
 
 @torch.no_grad()
 def short_horizon_relative_errors(model, prediction_mode, tau, traj, seq_length, stride, device,
-                                  divergence_threshold=1.0):
+                                  normalize, x_mean, x_std, y_mean, y_std, divergence_threshold=1.0):
     """traj: (T, H, W, C) at whatever resolution was already loaded.
     Replays EXACTLY training/trainer.py::Trainer.train_epoch()'s own
     free-running loop (delta mode: x_t advances by the model's own
@@ -91,22 +132,47 @@ def short_horizon_relative_errors(model, prediction_mode, tau, traj, seq_length,
     Te relative_rmse/relative_mae in logs/metrics.csv comes from, just
     replayed here at whatever ds the caller loaded traj with.
 
+    normalize + x_mean/x_std/y_mean/y_std (from compute_norm_stats,
+    matching this model's OWN training ratio/ds/prediction_mode): whether
+    the checkpoint being evaluated was trained on normalized data
+    (DatasetManagerMulti's normalize=True default) needs to be matched
+    here, or the model sees input miles outside its trained distribution --
+    a scale-mismatch bug this script's first version had (gave nonsensical
+    relative_rmse >> 1 for UNet). BUT this can't be inferred from a config
+    key alone: fno_training.py and unet_training.py call
+    DatasetManagerMulti identically (no explicit normalize kwarg) in
+    TODAY's code, yet 16modes_emul_RE90 (an old checkpoint) only reproduces
+    its own logged Te relative_rmse with normalize=False, while
+    unet_delta_RE90 (trained this week) only reproduces its own with
+    normalize=True -- DatasetManagerMulti's actual default evidently
+    changed at some point between the two trainings. There is no reliable
+    way to recover which was used from the checkpoint/config alone; the
+    caller must say so explicitly per model (cf. main()'s
+    --fno_normalize/--unet_normalize), calibrated against that run's own
+    logs/metrics.csv as the ground truth. When normalize=True, everything
+    below (x_t, target, outputs, the reported errors) is computed in the
+    SAME normalized space Trainer.train_epoch() itself used, directly
+    comparable to logs/metrics.csv's own numbers; when False, raw scale
+    throughout, same as the SAME comparison already validated for FNO.
+
     Returns a dict with both MEAN and MEDIAN relative_rmse/relative_mae,
     plus the raw per-window arrays and a divergence count/rate. The mean
     alone is not safe to report here: a handful of windows where the
     free-running delta loop genuinely diverges within just `seq_length`
     steps (a real possibility for a model with unstable rollout dynamics,
     not a bug) can produce enormous per-window errors that dominate a
-    plain average even when most windows are fine -- first found on
-    unet_delta_RE90, whose own official (much larger, averaged over many
-    more/differently-sampled windows) logs/metrics.csv Te relative_rmse was
-    ~0.06, nowhere near the ~36-60 a naive mean gave here. The median is
-    the primary number this script reports; divergence_rate (fraction of
+    plain average even when most windows are fine. The median is the
+    primary number this script reports; divergence_rate (fraction of
     windows with relative_rmse > divergence_threshold, i.e. worse than a
     trivial all-zero prediction) makes that instability visible explicitly
     rather than silently skewing an average.
     """
-    ds = SequenceDataset(traj, seq_length=seq_length, stride=stride, prediction_mode=prediction_mode)
+    if normalize:
+        ds = SequenceDataset(traj, seq_length=seq_length, stride=stride, prediction_mode=prediction_mode,
+                            normalize=True, x_mean=x_mean, x_std=x_std, y_mean=y_mean, y_std=y_std)
+    else:
+        ds = SequenceDataset(traj, seq_length=seq_length, stride=stride, prediction_mode=prediction_mode,
+                            normalize=False)
     if len(ds) == 0:
         raise ValueError(f"Trajectory too short ({traj.shape[0]} frames) for seq_length={seq_length}, stride={stride}")
 
@@ -175,6 +241,13 @@ def main():
                         "an approximation of a held-out window, not a rigorous re-derivation of "
                         "DatasetManagerMulti's own time-based train/test split")
     parser.add_argument("--stride", type=int, default=20, help="stride between windows, in native (post-ds) frames")
+    # Defaults calibrated empirically against each run's OWN logs/metrics.csv
+    # Te relative_rmse (16modes_emul_RE90 only matches with normalize=False;
+    # unet_delta_RE90/unet_state_RE90 only match with normalize=True) --
+    # cf. short_horizon_relative_errors' docstring for why this can't be
+    # inferred automatically. Override if evaluating a different checkpoint.
+    parser.add_argument("--fno_normalize", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--unet_normalize", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--out_dir", default="grid_independence_results")
     parser.add_argument("--device", default="auto")
     args = parser.parse_args()
@@ -199,14 +272,28 @@ def main():
     fno_mode = fno_cfg.get("prediction_mode", "delta")
     fno_seq_length = fno_cfg["seq_length"]
     fno_trained_res = 128 // fno_cfg["ds"]
-    print(f"  prediction_mode={fno_mode}  seq_length={fno_seq_length}  trained at {fno_trained_res}x{fno_trained_res} (ds={fno_cfg['ds']})", flush=True)
+    print(f"  prediction_mode={fno_mode}  seq_length={fno_seq_length}  trained at {fno_trained_res}x{fno_trained_res} (ds={fno_cfg['ds']})  normalize={args.fno_normalize}", flush=True)
+    fno_x_mean = fno_x_std = fno_y_mean = fno_y_std = None
+    if args.fno_normalize:
+        print("  Computing normalization stats matching this run's own training (ratio/ds/prediction_mode)...", flush=True)
+        fno_x_mean, fno_x_std, fno_y_mean, fno_y_std = compute_norm_stats(
+            args.data_dir, args.exp_dir, fno_cfg.get("ratio", 1), fno_cfg["ds"], fno_mode)
+        print(f"  x_mean={fno_x_mean.tolist()}  x_std={fno_x_std.tolist()}  "
+              f"y_mean={fno_y_mean.tolist()}  y_std={fno_y_std.tolist()}", flush=True)
 
     print("Loading UNet...", flush=True)
     unet, unet_cfg = load_emulator_unet(args.unet_run, device)
     unet_mode = unet_cfg.get("prediction_mode", "delta")
     unet_seq_length = unet_cfg["seq_length"]
     unet_trained_res = 128 // unet_cfg["ds"]
-    print(f"  prediction_mode={unet_mode}  seq_length={unet_seq_length}  trained at {unet_trained_res}x{unet_trained_res} (ds={unet_cfg['ds']})", flush=True)
+    print(f"  prediction_mode={unet_mode}  seq_length={unet_seq_length}  trained at {unet_trained_res}x{unet_trained_res} (ds={unet_cfg['ds']})  normalize={args.unet_normalize}", flush=True)
+    unet_x_mean = unet_x_std = unet_y_mean = unet_y_std = None
+    if args.unet_normalize:
+        print("  Computing normalization stats matching this run's own training (ratio/ds/prediction_mode)...", flush=True)
+        unet_x_mean, unet_x_std, unet_y_mean, unet_y_std = compute_norm_stats(
+            args.data_dir, args.exp_dir, unet_cfg.get("ratio", 1), unet_cfg["ds"], unet_mode)
+        print(f"  x_mean={unet_x_mean.tolist()}  x_std={unet_x_std.tolist()}  "
+              f"y_mean={unet_y_mean.tolist()}  y_std={unet_y_std.tolist()}", flush=True)
 
     if fno_trained_res != unet_trained_res:
         print(f"  Warning: FNO and UNet were trained at different resolutions "
@@ -226,7 +313,8 @@ def main():
               f"using last {tuple(traj.shape)} as the held-out window", flush=True)
 
         fno_stats = short_horizon_relative_errors(
-            fno, fno_mode, fno.tau, traj, fno_seq_length, args.stride, device)
+            fno, fno_mode, fno.tau, traj, fno_seq_length, args.stride, device,
+            args.fno_normalize, fno_x_mean, fno_x_std, fno_y_mean, fno_y_std)
         print(f"  FNO:  median relative_rmse={fno_stats['median_rmse']:.4f}  "
               f"(mean={fno_stats['mean_rmse']:.4f}, max={fno_stats['max_rmse']:.4f})  "
               f"median relative_mae={fno_stats['median_mae']:.4f}  "
@@ -237,7 +325,8 @@ def main():
 
         try:
             unet_stats = short_horizon_relative_errors(
-                unet, unet_mode, unet.tau, traj, unet_seq_length, args.stride, device)
+                unet, unet_mode, unet.tau, traj, unet_seq_length, args.stride, device,
+                args.unet_normalize, unet_x_mean, unet_x_std, unet_y_mean, unet_y_std)
             print(f"  UNet: median relative_rmse={unet_stats['median_rmse']:.4f}  "
                   f"(mean={unet_stats['mean_rmse']:.4f}, max={unet_stats['max_rmse']:.4f})  "
                   f"median relative_mae={unet_stats['median_mae']:.4f}  "
