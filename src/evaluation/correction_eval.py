@@ -196,7 +196,16 @@ def load_diffusion(run_dir, device):
     diffusion = Diffusion(model=base, timesteps=cfg["timesteps"],
                           noise_sampling_coeff=cfg.get("noise_sampling_coeff"))
     ckpt = load_checkpoint_dict(run_dir, ["final_model.pth", "min_test_loss.pth", "min_train_loss.pth"], device)
-    diffusion.load_state_dict(ckpt["model_state_dict"])
+    # strict=False: x_mean/x_std (DiffusionModel.py::Diffusion) were added
+    # after older checkpoints (e.g. diffusion16modes_RE90) were saved --
+    # their own docstring's whole point is "existing checkpoints/configs are
+    # unaffected" (defaults to identity, 0/1), but strict=True still errors
+    # on the merely-missing keys regardless of whether a sensible default
+    # exists. Only ever silently accepts MISSING keys this way (any
+    # unexpected key -- a real mismatch -- still raises via the check below).
+    missing, unexpected = diffusion.load_state_dict(ckpt["model_state_dict"], strict=False)
+    if unexpected:
+        raise RuntimeError(f"Unexpected keys loading {run_dir}'s checkpoint: {unexpected}")
     return diffusion.to(device).eval(), cfg
 
 
