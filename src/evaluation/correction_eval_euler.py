@@ -38,6 +38,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fno.fno_2D_classifier import FNO2D_classifier
 from training.DiffusionModel import Diffusion
+from training.ResidualCorrectorModel import ResidualCorrector
 from training.euler_dataset import FIELD_ORDER, load_single_trajectory
 from training.fno_training_euler import EmulatorFNO
 from evaluation.correction_eval import (
@@ -80,6 +81,35 @@ def load_diffusion_euler(run_dir, device):
     ckpt = load_checkpoint_dict(run_dir, ["final_model.pth", "min_test_loss.pth", "min_train_loss.pth"], device)
     diffusion.load_state_dict(ckpt["model_state_dict"])
     return diffusion.to(device).eval(), cfg
+
+
+def load_residual_corrector_euler(run_dir, device):
+    """Loads a training/ResidualCorrectorModel.py::ResidualCorrector run
+    (cf. configs/config_command_residual_corrector_euler.yaml) -- mirrors
+    load_diffusion_euler above, but n_cat is max_step+1 (rollout-step
+    buckets) rather than a diffusion timestep count, and there's no
+    noise_sampling_coeff/timesteps schedule to restore."""
+    cfg = load_config(run_dir)
+    base = FNO2D_classifier(
+        input_dim=cfg["n_channels"], output_dim=cfg["n_channels"],
+        modes_x=cfg["modes_x"], modes_y=cfg["modes_y"], width=cfg["width"], l=cfg["kernel_size"],
+        n_layer=cfg["n_layers"], hidden_proj=cfg.get("hidden_proj"), mlp=cfg.get("mlp", True),
+        layers_mlp=cfg.get("layers_mlp"), class_mlp_layers=cfg.get("class_mlp_layers"),
+        n_cat=cfg["max_step"] + 1, padding=cfg.get("padding", 0), device=device,
+    ).to(device).float()
+    corrector = ResidualCorrector(model=base, max_step=cfg["max_step"])
+    ckpt = load_checkpoint_dict(run_dir, ["min_test_loss.pth", "final_model.pth", "min_train_loss.pth"], device)
+    corrector.load_state_dict(ckpt["model_state_dict"])
+    return corrector.to(device).eval(), cfg
+
+
+def is_residual_corrector_run(run_dir):
+    """config_command_residual_corrector_euler.yaml has max_step, no
+    timesteps; config_command_diff_euler.yaml has the reverse -- lets
+    correction_eval_euler.py's main() pick the right loader automatically
+    without a new CLI flag."""
+    cfg = load_config(run_dir)
+    return "max_step" in cfg and "timesteps" not in cfg
 
 
 def load_gt_trajectory_euler(data_dir, val_test_file, traj_idx, mean, std, frame_skip=1):
@@ -301,9 +331,14 @@ def main():
                           else "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
                           else "cpu")
 
-    print("Loading emulator + diffusion corrector...", flush=True)
+    print("Loading emulator + corrector...", flush=True)
     emulator, emul_cfg = load_emulator_fno_euler(args.emulator_run, device)
-    diffusion, diff_cfg = load_diffusion_euler(args.diffusion_run, device)
+    if is_residual_corrector_run(args.diffusion_run):
+        print("  corrector type: residual (single-shot, trained on real rollout drift)", flush=True)
+        diffusion, diff_cfg = load_residual_corrector_euler(args.diffusion_run, device)
+    else:
+        print("  corrector type: diffusion (iterative DDPM denoising, synthetic noise)", flush=True)
+        diffusion, diff_cfg = load_diffusion_euler(args.diffusion_run, device)
     prediction_mode = emul_cfg.get("prediction_mode", "state")
     frame_skip = emul_cfg.get("frame_skip", 1)
     mean = np.array(emul_cfg["field_mean"], dtype=np.float32)

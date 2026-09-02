@@ -1,0 +1,71 @@
+########## RESIDUAL CORRECTOR (euler_multi_quadrants_openBC, gamma=1.4, delta emulator) ##########
+
+seed: 42
+device: cuda
+
+# Trained on the ACTUAL rollout drift of fno_euler_gamma1.4_delta (cf.
+# training/generate_euler_correction_data.py, run separately beforehand to
+# produce these two files -- this config does NOT run the emulator itself),
+# not synthetic Gaussian noise like diffusion_euler_gamma1.4 -- see
+# training/ResidualCorrectorModel.py's docstring for why that one couldn't
+# stabilize this emulator's delta-mode divergence.
+#
+# train_correction_file: rollouts from the emulator's OWN train_files
+# (already seen by the emulator -- fine, the corrector is learning THIS
+# emulator's error behavior). val_correction_file: rollouts from the
+# emulator's OWN val_traj_idx trajectories -- used here as this run's
+# Tr/Te split (early stopping, overfitting check). The emulator's
+# test_traj_idx trajectories are deliberately NEVER touched by either file
+# -- reserved entirely for the final held-out rollout-correction check
+# (evaluation/correction_eval_euler.py's residual-corrector counterpart).
+exp_dir: euler_multi_quadrants_openBC
+train_correction_file: euler_multi_quadrants_openBC/correction_data/train_rollouts.hdf5
+val_correction_file: euler_multi_quadrants_openBC/correction_data/val_rollouts.hdf5
+stride: 1
+max_step: 300  # must match --n_steps used when generating both files above
+
+n_channels: 4  # energy, density, momentum_x, momentum_y
+
+# Same "smaller-A" scale as fno_euler_gamma1.4_delta (config_command_emul_euler_delta.yaml)
+# -- this corrector targets that specific emulator, no reason to scale up.
+# layers_mlp[0]/[-1] must equal width (32); class_mlp_layers[0] must equal
+# 2*width (64, avg+max pool concatenated, cf. fno_2D_classifier.py).
+modes_x: 24
+modes_y: 24
+kernel_size: 1
+n_layers: 4
+width: 32
+hidden_proj: 64
+mlp: true
+layers_mlp: [32, 64, 32]
+padding: 16
+class_mlp_layers: [64, 128, 301]  # last entry must equal max_step+1
+
+# Training parameters. patience is not optional here -- this run's whole
+# point is verifying the corrector doesn't just overfit the specific
+# trajectories/steps it was shown (cf. the Tr/Te gap in logs/metrics.csv).
+num_epochs: 200
+patience: 20
+min_delta: 1.0e-6
+batch_size: 8
+num_workers: 2
+loss_score: mse
+loss_cat: cross_entropy
+optimizer:
+  type: adam
+  lr: 0.0001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 200
+  eta_min: 0.000001
+
+# Weighted toward the regression (residual) loss -- the classifier head
+# only needs to be good enough to gate whether correction fires (mirrors
+# maybe_correct's s_init threshold), the actual correction quality is
+# entirely the regression head's job.
+lambda_c: 0.2
+
+#
+exp_name: residual_corrector_euler_gamma1.4_delta
+name_weights_to_load: null

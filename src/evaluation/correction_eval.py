@@ -221,8 +221,29 @@ def maybe_correct(x_t, diffusion, s_init, s_stop, device, re=None):
         un FNO2D_classifier_concat (corrector Re-conditionne). None (defaut) =
         comportement inchange pour un corrector mono-Re.
 
+    diffusion peut aussi etre un training.ResidualCorrectorModel.ResidualCorrector
+    (pas un vrai modele de diffusion -- correction en un seul passage,
+    entrainee sur la vraie derive d'un emulator plutot que du bruit gaussien
+    synthetique, cf. sa propre docstring) : branche geree ci-dessous sans
+    toucher au chemin DDPM existant.
+
     Retourne (x_t corrige ou non, correction_declenchee: bool, niveau de bruit detecte: int).
     """
+    from training.ResidualCorrectorModel import ResidualCorrector
+    if isinstance(diffusion, ResidualCorrector):
+        # Single forward pass: no noise schedule, no iterative reverse
+        # process (cf. ResidualCorrector's own docstring for why an
+        # iterative DDPM-style loop has no principled meaning for a
+        # deterministic rollout-drift corruption). No explicit
+        # normalize/denormalize step either -- Euler data already arrives
+        # pre-normalized from the data pipeline (unlike the (u,v) Kolmogorov
+        # fields Diffusion.normalize/denormalize were added for).
+        residual, logits = diffusion.model(x_t, predict_class=True)
+        s_hat = int(torch.softmax(logits, dim=-1).argmax(dim=-1).reshape(-1)[0].item())
+        if s_hat <= s_init:
+            return x_t, False, s_hat
+        return x_t + residual, True, s_hat
+
     # diffusion.model/_forward_diffusion/_reverse_diffusion are called directly
     # here (not via Diffusion.forward()), so normalization has to be applied
     # explicitly: once in, once out, everything in between (classifier +
