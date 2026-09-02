@@ -6,9 +6,10 @@ class ResidualCorrector(nn.Module):
     """Thin wrapper around an FNO2D_classifier-shaped backbone (fno/fno_2D_classifier.py),
     trained to predict the RESIDUAL (true_state - corrupted_state) directly
     from a real emulator-rollout state, plus (via the backbone's existing
-    classifier head) which rollout step the state looks like it's at -- NOT
-    a real diffusion process (cf. training/DiffusionModel.py::Diffusion,
-    kept for the synthetic-noise correctors elsewhere in this project).
+    classifier head) a discretized bucket of how corrupted that state
+    actually is -- NOT a real diffusion process (cf.
+    training/DiffusionModel.py::Diffusion, kept for the synthetic-noise
+    correctors elsewhere in this project).
 
     Why not reuse Diffusion: DDPM's iterative reverse-sampling loop only
     makes sense for a corruption process that is known, stochastic and
@@ -23,19 +24,25 @@ class ResidualCorrector(nn.Module):
     alpha/beta buffers, no forward/reverse diffusion methods.
 
     n_cat on the wrapped backbone still means "how many discrete classes
-    the classifier head predicts", now interpreted as a rollout-step bucket
-    (cf. training/trainer_residual_corrector.py) instead of a diffusion
-    timestep -- everything else about FNO2D_classifier's forward() is
-    unchanged and reused as-is.
+    the classifier head predicts" -- NOT a rollout-step bucket (an earlier
+    version of this design used raw step index, but that isn't a
+    content-independent quantity: one trajectory can be badly drifted by
+    step 50 while another is still clean at step 90, so the same step
+    label would correspond to very different actual corruption levels
+    across trajectories -- an ill-posed target). Instead it's a bucket of
+    the ACTUAL measured relative error between corrupted and true state
+    (cf. training/euler_dataset.py::LazyEulerCorrectionDataset's
+    error_bin_edges), the direct analogue of a real diffusion timestep:
+    a trajectory-independent measure of how corrupted a state is.
     """
 
-    def __init__(self, model, max_step):
+    def __init__(self, model, n_bins):
         super().__init__()
         self.model = model
-        self.max_step = max_step
+        self.n_bins = n_bins
 
     def forward(self, x, predict_class=True):
-        # Straight passthrough to the backbone -- (residual_pred, step_logits)
+        # Straight passthrough to the backbone -- (residual_pred, bin_logits)
         # when predict_class=True, matching FNO2D_classifier's own return
         # convention exactly (cf. fno/fno_2D_classifier.py::forward).
         return self.model(x, predict_class=predict_class)
@@ -46,11 +53,11 @@ class ResidualCorrector(nn.Module):
         residual, _ = self.model(x, predict_class=True)
         return x + residual
 
-    def estimate_step(self, x):
-        """Returns the backbone's own estimate of which rollout-step bucket
-        x looks like it's at (argmax over the classifier head), used by
-        evaluation/correction_eval_euler.py::maybe_correct_residual to
-        decide whether a state needs correcting at all (mirrors
-        maybe_correct's s_init threshold)."""
-        _, step_logits = self.model(x, predict_class=True)
-        return torch.softmax(step_logits, dim=-1).argmax(dim=-1)
+    def estimate_error_bin(self, x):
+        """Returns the backbone's own estimate of which corruption-level
+        bucket x looks like it's in (argmax over the classifier head), used
+        by evaluation/correction_eval.py::maybe_correct's ResidualCorrector
+        branch to decide whether a state needs correcting at all (mirrors
+        maybe_correct's s_init threshold, now in error-bin units)."""
+        _, bin_logits = self.model(x, predict_class=True)
+        return torch.softmax(bin_logits, dim=-1).argmax(dim=-1)

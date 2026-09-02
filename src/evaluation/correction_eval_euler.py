@@ -86,18 +86,20 @@ def load_diffusion_euler(run_dir, device):
 def load_residual_corrector_euler(run_dir, device):
     """Loads a training/ResidualCorrectorModel.py::ResidualCorrector run
     (cf. configs/config_command_residual_corrector_euler.yaml) -- mirrors
-    load_diffusion_euler above, but n_cat is max_step+1 (rollout-step
-    buckets) rather than a diffusion timestep count, and there's no
+    load_diffusion_euler above, but n_cat is n_error_bins (buckets of
+    actual measured relative error, cf. LazyEulerCorrectionDataset) rather
+    than a diffusion timestep count, and there's no
     noise_sampling_coeff/timesteps schedule to restore."""
     cfg = load_config(run_dir)
+    n_error_bins = cfg.get("n_error_bins", 100)
     base = FNO2D_classifier(
         input_dim=cfg["n_channels"], output_dim=cfg["n_channels"],
         modes_x=cfg["modes_x"], modes_y=cfg["modes_y"], width=cfg["width"], l=cfg["kernel_size"],
         n_layer=cfg["n_layers"], hidden_proj=cfg.get("hidden_proj"), mlp=cfg.get("mlp", True),
         layers_mlp=cfg.get("layers_mlp"), class_mlp_layers=cfg.get("class_mlp_layers"),
-        n_cat=cfg["max_step"] + 1, padding=cfg.get("padding", 0), device=device,
+        n_cat=n_error_bins, padding=cfg.get("padding", 0), device=device,
     ).to(device).float()
-    corrector = ResidualCorrector(model=base, max_step=cfg["max_step"])
+    corrector = ResidualCorrector(model=base, n_bins=n_error_bins)
     ckpt = load_checkpoint_dict(run_dir, ["min_test_loss.pth", "final_model.pth", "min_train_loss.pth"], device)
     corrector.load_state_dict(ckpt["model_state_dict"])
     return corrector.to(device).eval(), cfg

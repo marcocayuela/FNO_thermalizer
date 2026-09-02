@@ -60,12 +60,15 @@ class ResidualCorrectorTrainingEuler():
         self.patience = self.args.get("patience", None)
         self.min_delta = self.args.get("min_delta", 1e-8)
 
+        self.n_error_bins = self.args.get("n_error_bins", 100)
         train_ds = LazyEulerCorrectionDataset(
             os.path.join(DATA_DIR, self.args["train_correction_file"]), data_root=DATA_DIR,
-            stride=self.args.get("stride", 1), max_step=self.args.get("max_step"))
+            stride=self.args.get("stride", 1), max_step=self.args.get("max_step"),
+            n_error_bins=self.n_error_bins)
         test_ds = LazyEulerCorrectionDataset(
             os.path.join(DATA_DIR, self.args["val_correction_file"]), data_root=DATA_DIR,
-            stride=self.args.get("stride", 1), max_step=self.args.get("max_step"))
+            stride=self.args.get("stride", 1), max_step=self.args.get("max_step"),
+            n_error_bins=self.n_error_bins)
         self.training_loader = torch.utils.data.DataLoader(
             train_ds, batch_size=self.batch_size, shuffle=True,
             num_workers=self.num_workers, pin_memory=True, persistent_workers=self.num_workers > 0)
@@ -93,10 +96,11 @@ class ResidualCorrectorTrainingEuler():
         self.mlp = self.args.get("mlp", True)
         self.layers_mlp = self.args.get("layers_mlp", None)
         self.class_mlp_layers = self.args.get("class_mlp_layers", None)
-        # max_step: how many rollout-step buckets the classifier head
-        # predicts (cf. ResidualCorrector docstring) -- reuses the SAME
-        # n_cat slot FNO2D_classifier already has for diffusion timesteps.
-        self.max_step = self.args["max_step"]
+        # n_error_bins: how many corruption-level buckets the classifier
+        # head predicts (cf. ResidualCorrector/LazyEulerCorrectionDataset
+        # docstrings -- a bucket of the ACTUAL measured relative error, not
+        # a raw rollout step) -- reuses the SAME n_cat slot FNO2D_classifier
+        # already has for diffusion timesteps.
         self.lambda_c = self.args.get("lambda_c", 1.)
         self.padding = self.args.get("padding", 0)
 
@@ -133,11 +137,11 @@ class ResidualCorrectorTrainingEuler():
                                     mlp=self.mlp,
                                     layers_mlp=self.layers_mlp,
                                     class_mlp_layers=self.class_mlp_layers,
-                                    n_cat=self.max_step + 1,
+                                    n_cat=self.n_error_bins,
                                     padding=self.padding,
                                     device=self.device)
 
-        model = ResidualCorrector(model=backbone, max_step=self.max_step)
+        model = ResidualCorrector(model=backbone, n_bins=self.n_error_bins)
 
         if self.name_weights_to_load is not None:
             path_model = os.path.join(LOG_DIR, self.exp_dir, self.exp_name, "model_weights")

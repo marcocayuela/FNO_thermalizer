@@ -22,7 +22,33 @@ exp_dir: euler_multi_quadrants_openBC
 train_correction_file: euler_multi_quadrants_openBC/correction_data/train_rollouts.hdf5
 val_correction_file: euler_multi_quadrants_openBC/correction_data/val_rollouts.hdf5
 stride: 1
-max_step: 300  # must match --n_steps used when generating both files above
+# Capped at 100, NOT the 300 the rollout files were generated with: each
+# Euler trajectory only has ~101 native GT frames (T=1.5s at dt=0.015s), so
+# there is no real GT to pair a prediction against beyond step 100 -- the
+# emulator itself only starts genuinely diverging around step ~150-300
+# (energy blow-up), well past what any (corrupted, true) pair can ever
+# cover here. LazyEulerCorrectionDataset auto-clamps to whatever the
+# shortest referenced source trajectory actually supports regardless of
+# this value (with a printed warning) -- this only restricts which steps
+# are DRAWN FROM, unrelated to what the classifier head predicts (below).
+max_step: 100
+
+# How many buckets of ACTUAL measured relative error (corrupted vs true)
+# the classifier head predicts -- NOT a rollout-step count (an earlier
+# version of this design used raw step index, but that isn't
+# trajectory-independent: caught during review -- one trajectory can be
+# badly drifted by step 50 while another is clean at step 90, so the same
+# step label meant very different real corruption levels). Log-spaced bins
+# from 1e-3 to 2.0 relative error (cf. LazyEulerCorrectionDataset's
+# error_bin_edges) -- this is the actual analogue of a diffusion timestep.
+# NOTE for evaluation: correction_eval_euler.py's --s_init default (7) was
+# calibrated for OTHER correctors' scales (diffusion timesteps out of
+# ~1000, or the old raw-step scale out of 100) -- on this log-binned scale,
+# bin 7 corresponds to a tiny ~0.2% relative error, far too sensitive. Pick
+# --s_init empirically against this run's own error_bin_edges (e.g. the
+# bin containing 0.05-0.1 relative error is a more reasonable "worth
+# correcting" threshold to start from).
+n_error_bins: 100
 
 n_channels: 4  # energy, density, momentum_x, momentum_y
 
@@ -39,7 +65,7 @@ hidden_proj: 64
 mlp: true
 layers_mlp: [32, 64, 32]
 padding: 16
-class_mlp_layers: [64, 128, 301]  # last entry must equal max_step+1
+class_mlp_layers: [64, 128, 100]  # last entry must equal n_error_bins
 
 # Training parameters. patience is not optional here -- this run's whole
 # point is verifying the corrector doesn't just overfit the specific

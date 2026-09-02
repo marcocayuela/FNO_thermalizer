@@ -255,8 +255,29 @@ class LazyEulerCorrectionDataset(Dataset):
     file it came from (per-row provenance -- source_files/source_traj_idx --
     stored in the generated correction-data file itself, so this class is
     self-contained given just that one file + data_root). Returns
-    (corrupted, true, step) per __getitem__, both frames in the SAME
+    (corrupted, true, error_bin) per __getitem__, both frames in the SAME
     normalized space (mean/std baked into the generated file's own attrs).
+
+    error_bin, NOT the raw rollout step: a real DDPM's "noise level t" is a
+    content-independent quantity by construction (injecting noise of level
+    t always produces the same corruption magnitude, whatever the clean
+    image). A rollout step index has no such property -- one trajectory can
+    already be badly drifted by step 50 while another is still clean at
+    step 90, so labelling the classifier target by raw step would teach it
+    to associate a spatial state with an arbitrary per-trajectory clock
+    rather than with how corrupted that state actually is (caught during
+    review -- the ill-posedness this would cause for maybe_correct's s_init
+    threshold). Instead, the ACTUAL relative error between corrupted and
+    true (a trajectory-independent, comparable quantity, exactly analogous
+    to a real noise level) is computed here and discretized into
+    log-spaced bins -- cf. n_error_bins/error_bin_edges below.
+
+    max_step still restricts which steps are drawn from at all (a DATA
+    AVAILABILITY constraint, unrelated to what the classifier predicts):
+    Euler trajectories only have ~101 native GT frames, so there is no real
+    GT to pair a prediction against beyond that, regardless of how far the
+    correction-data file's own rollout goes (auto-clamped below, with a
+    warning, against the shortest referenced source trajectory's own length).
 
     Unlike LazyEulerDataset/LazyEulerFirstSnapshot, this does NOT read
     windows from the raw file directly -- the "corrupted" half comes from a
@@ -264,10 +285,26 @@ class LazyEulerCorrectionDataset(Dataset):
     expensive part, done once by generate_euler_correction_data.py, not
     repeated every epoch)."""
 
-    def __init__(self, correction_h5_path, data_root, stride=1, max_step=None):
+    def __init__(self, correction_h5_path, data_root, stride=1, max_step=None,
+                 n_error_bins=100, error_bin_min=0.02, error_bin_max=1.2):
+        # Bounds calibrated against fno_euler_gamma1.4_delta's OWN observed
+        # relative-error range over steps 0-100 on real data: already
+        # ~0.10 by step 1 (this emulator's error jumps fast, not a slow
+        # ramp from ~0), climbing to ~0.9 by step 100 -- [1e-3, 2.0] (a
+        # generic first guess) put nearly the entire observed range in the
+        # top ~15 of 100 bins, wasting most of the classifier's resolution
+        # on values that never occur. Recalibrate these two args if reused
+        # for a differently-scaled emulator/corrector.
         self.correction_h5_path = correction_h5_path
         self.data_root = data_root
         self.stride = stride
+        self.n_error_bins = n_error_bins
+        # n_error_bins-1 edges -> n_error_bins bins via np.digitize (bin i:
+        # error_bin_edges[i-1] <= relative_error < error_bin_edges[i]).
+        # Log-spaced: most training samples land at low corruption (early
+        # in a not-yet-diverged rollout), so linear bins would waste most
+        # of their resolution on the empty high-error tail.
+        self.error_bin_edges = np.logspace(np.log10(error_bin_min), np.log10(error_bin_max), n_error_bins - 1)
         self._file = None
         self._true_files = {}  # source rel_path -> open h5py.File, per worker
 
@@ -279,7 +316,27 @@ class LazyEulerCorrectionDataset(Dataset):
             self.source_files = [s.decode() if isinstance(s, bytes) else s for s in f["source_files"][:]]
             self.source_traj_idx = f["source_traj_idx"][:]
 
-        last_step = (self.n_frames - 1) if max_step is None else min(max_step, self.n_frames - 1)
+        # Cap by the TRUE source files' own native length, not just how far
+        # the predicted rollout goes: generate_euler_correction_data.py can
+        # roll the emulator out arbitrarily far past the ~100-native-frame
+        # GT trajectories (that's the whole point of the long-horizon
+        # divergence test elsewhere in this project), but there is no real
+        # GT beyond a trajectory's own length to pair a prediction against
+        # -- attempting to read one crashes with an HDF5 index-out-of-range
+        # error deep into a training run (hit this for real: max_step=300
+        # against 101-frame trajectories). true_step = step*frame_skip must
+        # stay within EVERY referenced source file's own T.
+        min_true_len = min(_peek_file_info(os.path.join(data_root, p))[2] for p in set(self.source_files))
+        max_step_from_data = (min_true_len - 1) // max(self.frame_skip, 1)
+        last_step = self.n_frames - 1
+        if max_step is not None:
+            last_step = min(last_step, max_step)
+        if last_step > max_step_from_data:
+            print(f"  [LazyEulerCorrectionDataset] requested max_step reaches step {last_step}, but the "
+                  f"shortest referenced source trajectory only has {min_true_len} true frames (frame_skip="
+                  f"{self.frame_skip}) -- clamping to step {max_step_from_data} (no real GT exists beyond that).",
+                  flush=True)
+            last_step = max_step_from_data
         self.steps = list(range(0, last_step + 1, stride))
         self.n_per_traj = len(self.steps)
 
@@ -323,9 +380,16 @@ class LazyEulerCorrectionDataset(Dataset):
         true_frame[..., 2:4] = tf["t1_fields"]["momentum"][traj_idx, true_step]
         true_frame = (true_frame - self.mean) / self.std
 
-        return (torch.from_numpy(corrupted.copy()).float(),
-                torch.from_numpy(true_frame.copy()).float(),
-                step)
+        corrupted_t = torch.from_numpy(corrupted.copy()).float()
+        true_t = torch.from_numpy(true_frame.copy()).float()
+
+        # Actual measured corruption (cf. class docstring) -- NOT the raw
+        # step -- is what the classifier head is trained against.
+        relative_error = (torch.linalg.vector_norm(corrupted_t - true_t)
+                          / (torch.linalg.vector_norm(true_t) + 1e-8)).item()
+        error_bin = int(min(np.digitize(relative_error, self.error_bin_edges), self.n_error_bins - 1))
+
+        return corrupted_t, true_t, error_bin
 
 
 def _build_lazy_loader(dataset_cls, h5_paths_and_indices, extra_args, mean, std,
