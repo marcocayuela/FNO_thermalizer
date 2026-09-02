@@ -80,7 +80,8 @@ def load_emulator_unet(run_dir, device):
 
 
 @torch.no_grad()
-def short_horizon_relative_errors(model, prediction_mode, tau, traj, seq_length, stride, device):
+def short_horizon_relative_errors(model, prediction_mode, tau, traj, seq_length, stride, device,
+                                  divergence_threshold=1.0):
     """traj: (T, H, W, C) at whatever resolution was already loaded.
     Replays EXACTLY training/trainer.py::Trainer.train_epoch()'s own
     free-running loop (delta mode: x_t advances by the model's own
@@ -89,7 +90,21 @@ def short_horizon_relative_errors(model, prediction_mode, tau, traj, seq_length,
     would produce -- so this is the same computation the already-logged
     Te relative_rmse/relative_mae in logs/metrics.csv comes from, just
     replayed here at whatever ds the caller loaded traj with.
-    Returns (mean_relative_rmse, mean_relative_mae) over all windows.
+
+    Returns a dict with both MEAN and MEDIAN relative_rmse/relative_mae,
+    plus the raw per-window arrays and a divergence count/rate. The mean
+    alone is not safe to report here: a handful of windows where the
+    free-running delta loop genuinely diverges within just `seq_length`
+    steps (a real possibility for a model with unstable rollout dynamics,
+    not a bug) can produce enormous per-window errors that dominate a
+    plain average even when most windows are fine -- first found on
+    unet_delta_RE90, whose own official (much larger, averaged over many
+    more/differently-sampled windows) logs/metrics.csv Te relative_rmse was
+    ~0.06, nowhere near the ~36-60 a naive mean gave here. The median is
+    the primary number this script reports; divergence_rate (fraction of
+    windows with relative_rmse > divergence_threshold, i.e. worse than a
+    trivial all-zero prediction) makes that instability visible explicitly
+    rather than silently skewing an average.
     """
     ds = SequenceDataset(traj, seq_length=seq_length, stride=stride, prediction_mode=prediction_mode)
     if len(ds) == 0:
@@ -114,14 +129,21 @@ def short_horizon_relative_errors(model, prediction_mode, tau, traj, seq_length,
         rmses.append(relative_rmse(outputs, target).item())
         maes.append(relative_mae(outputs, target).item())
 
-    return float(np.mean(rmses)), float(np.mean(maes))
+    rmses, maes = np.array(rmses), np.array(maes)
+    return {
+        "mean_rmse": float(np.mean(rmses)), "median_rmse": float(np.median(rmses)),
+        "mean_mae": float(np.mean(maes)), "median_mae": float(np.median(maes)),
+        "max_rmse": float(np.max(rmses)), "n_windows": len(rmses),
+        "n_diverged": int(np.sum(rmses > divergence_threshold)),
+        "rmses": rmses, "maes": maes,
+    }
 
 
 def draw_grid_independence(resolutions, fno_rmse, unet_rmse, fno_mae, unet_mae, trained_res, out_path):
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
     for ax, fno_y, unet_y, title in [
-        (axes[0], fno_rmse, unet_rmse, "relative RMSE"),
-        (axes[1], fno_mae, unet_mae, "relative MAE"),
+        (axes[0], fno_rmse, unet_rmse, "median relative RMSE"),
+        (axes[1], fno_mae, unet_mae, "median relative MAE"),
     ]:
         ax.plot(resolutions, fno_y, "o-", color="tab:blue", label="FNO", lw=2, ms=7)
         ax.plot(resolutions, unet_y, "s-", color="tab:red", label="UNet", lw=2, ms=7)
@@ -192,6 +214,7 @@ def main():
               f"on the plot will only be drawn at the FNO's.", flush=True)
 
     results = {"fno": {"rmse": [], "mae": []}, "unet": {"rmse": [], "mae": []}}
+    all_stats = []  # kept for the CSV's diagnostic columns (n_windows, n_diverged, mean vs median)
 
     for res in resolutions:
         ds = RESOLUTION_TO_DS[res]
@@ -202,34 +225,45 @@ def main():
         print(f"  trajectory shape at this resolution: {tuple(full_traj.shape)}, "
               f"using last {tuple(traj.shape)} as the held-out window", flush=True)
 
-        fno_rmse, fno_mae = short_horizon_relative_errors(
+        fno_stats = short_horizon_relative_errors(
             fno, fno_mode, fno.tau, traj, fno_seq_length, args.stride, device)
-        print(f"  FNO:  relative_rmse={fno_rmse:.4f}  relative_mae={fno_mae:.4f}", flush=True)
-        results["fno"]["rmse"].append(fno_rmse)
-        results["fno"]["mae"].append(fno_mae)
+        print(f"  FNO:  median relative_rmse={fno_stats['median_rmse']:.4f}  "
+              f"(mean={fno_stats['mean_rmse']:.4f}, max={fno_stats['max_rmse']:.4f})  "
+              f"median relative_mae={fno_stats['median_mae']:.4f}  "
+              f"diverged {fno_stats['n_diverged']}/{fno_stats['n_windows']} windows", flush=True)
+        results["fno"]["rmse"].append(fno_stats["median_rmse"])
+        results["fno"]["mae"].append(fno_stats["median_mae"])
+        all_stats.append(("fno", res, fno_stats))
 
         try:
-            unet_rmse, unet_mae = short_horizon_relative_errors(
+            unet_stats = short_horizon_relative_errors(
                 unet, unet_mode, unet.tau, traj, unet_seq_length, args.stride, device)
-            print(f"  UNet: relative_rmse={unet_rmse:.4f}  relative_mae={unet_mae:.4f}", flush=True)
+            print(f"  UNet: median relative_rmse={unet_stats['median_rmse']:.4f}  "
+                  f"(mean={unet_stats['mean_rmse']:.4f}, max={unet_stats['max_rmse']:.4f})  "
+                  f"median relative_mae={unet_stats['median_mae']:.4f}  "
+                  f"diverged {unet_stats['n_diverged']}/{unet_stats['n_windows']} windows", flush=True)
         except RuntimeError as e:
             # e.g. a resolution not divisible by 2**depth would crash inside
             # UNet2D's Up.forward skip-connection concat -- recorded as NaN
             # rather than aborting the whole sweep, so the FNO side of the
             # comparison still completes.
             print(f"  UNet: FAILED at this resolution ({e}) -- recording NaN", flush=True)
-            unet_rmse, unet_mae = float("nan"), float("nan")
-        results["unet"]["rmse"].append(unet_rmse)
-        results["unet"]["mae"].append(unet_mae)
+            unet_stats = {"median_rmse": float("nan"), "median_mae": float("nan"),
+                         "mean_rmse": float("nan"), "mean_mae": float("nan"),
+                         "max_rmse": float("nan"), "n_windows": 0, "n_diverged": 0}
+        results["unet"]["rmse"].append(unet_stats["median_rmse"])
+        results["unet"]["mae"].append(unet_stats["median_mae"])
+        all_stats.append(("unet", res, unet_stats))
 
     print("\nWriting outputs...", flush=True)
     csv_path = os.path.join(args.out_dir, "grid_independence.csv")
     with open(csv_path, "w") as f:
-        f.write("resolution,model,relative_rmse,relative_mae\n")
-        for res, r, m in zip(resolutions, results["fno"]["rmse"], results["fno"]["mae"]):
-            f.write(f"{res},fno,{r:.6f},{m:.6f}\n")
-        for res, r, m in zip(resolutions, results["unet"]["rmse"], results["unet"]["mae"]):
-            f.write(f"{res},unet,{r:.6f},{m:.6f}\n")
+        f.write("resolution,model,median_relative_rmse,median_relative_mae,mean_relative_rmse,"
+                "mean_relative_mae,max_relative_rmse,n_windows,n_diverged\n")
+        for model_name, res, s in all_stats:
+            f.write(f"{res},{model_name},{s['median_rmse']:.6f},{s['median_mae']:.6f},"
+                    f"{s['mean_rmse']:.6f},{s['mean_mae']:.6f},{s['max_rmse']:.6f},"
+                    f"{s['n_windows']},{s['n_diverged']}\n")
     print(f"  {csv_path}", flush=True)
 
     plot_path = os.path.join(args.out_dir, "grid_independence.png")
