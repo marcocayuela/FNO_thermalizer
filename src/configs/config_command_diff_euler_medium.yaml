@@ -1,0 +1,69 @@
+########## DIFFUSION (euler_multi_quadrants_openBC, gamma=1.4 "Dry_air") -- MEDIUM variant ##########
+# Two changes vs config_command_diff_euler.yaml at once, deliberately kept
+# in one run rather than split across two: a mid-size backbone (~3.9M
+# params, ~3.9x config_command_diff_euler_small.yaml's ~1M, ~0.36x the
+# full-size run's ~10.9M -- verified locally via
+# FNO2D_classifier.count_parameters_per_module()) and a retuned
+# noise_sampling_coeff so training actually concentrates on the small
+# corruptions this corrector deals with in practice.
+
+seed: 42
+device: cuda
+
+exp_dir: euler_multi_quadrants_openBC
+train_files:
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
+  - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_40.hdf5
+stride: 1
+
+n_channels: 4  # energy, density, momentum_x, momentum_y
+# field_mean/field_std left unset -- load_euler_diffusion_data() computes
+# them itself if absent (same as config_command_diff_euler.yaml).
+
+modes_x: 20   # full=24, small=16
+modes_y: 20
+kernel_size: 1
+n_layers: 4   # full=4, small=3 -- kept at the full run's depth
+width: 34     # full=48, small=24
+hidden_proj: 68    # 2*width, same ratio as the other two configs
+mlp: true
+layers_mlp: [34, 68, 34]      # must equal width at [0]/[-1]
+padding: 16
+timesteps: 1000
+class_mlp_layers: [68, 136, 1000]   # 2*width, 4*width, n_cat -- FNO2D_classifier's own default formula
+
+# noise_sampling_coeff controls how t is sampled during training (a
+# truncated-normal fraction of `timesteps`, cf. DiffusionModel.py::forward),
+# NOT the schedule's resolution -- T stays 1000 on purpose, that's what
+# gives fine-grained steps near t=0, exactly the regime that matters here.
+# Measured with the ORIGINAL coeff=0.3: median sampled t~=202, only 2.6% of
+# training examples land below t=10, even though the classifier only ever
+# detects t_hat~3-6 in practice on the Kolmogorov analogue (never verified
+# yet for Euler specifically -- worth checking against this run's own
+# correction_eval_euler.py noise_levels once trained, and retuning again if
+# the real t_hat range turns out different). At coeff=0.03: median~=20,
+# ~26% of training mass below t=10, ~50% below t=20 -- much better aligned
+# with a corrector that only ever fixes small drifts.
+noise_sampling_coeff: 0.03   # was 0.3
+
+num_epochs: 300
+batch_size: 34   # same as config_command_diff_euler_small.yaml -- untested
+                 # at this width specifically (a bit more memory per sample
+                 # than the small config's width=24), lower it first if this
+                 # OOMs.
+num_workers: 2
+loss_score: mse
+loss_cat: cross_entropy
+optimizer:
+  type: adam
+  lr: 0.0001
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 300
+  eta_min: 0.000001
+
+lambda_c: 0.3
+
+#
+exp_name: diffusion_euler_gamma1.4_medium
