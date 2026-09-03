@@ -5,11 +5,13 @@ device: cuda
 
 # Same data/experiment family as config_command_diff_euler.yaml, much
 # smaller backbone -- width and modes roughly halved, one fewer Fourier
-# layer, batch size x4. Rough param-count scaling: the FNO weight tensors
-# scale ~width^2 * modes_x * modes_y * n_layers, so (24/48)^2 * (16/24)^2 *
-# (3/4) ~= 0.08x the backbone weights of the full-size run -- an order of
-# magnitude fewer parameters, should be noticeably faster per epoch on top
-# of the larger batch cutting the number of steps/epoch by 4x.
+# layer, batch size x8.5 (4 -> 34). Rough param-count scaling: the FNO
+# weight tensors scale ~width^2 * modes_x * modes_y * n_layers, so
+# (24/48)^2 * (16/24)^2 * (3/4) ~= 0.08x the backbone weights of the
+# full-size run (measured locally: 996,932 vs 10,880,732 params, ~0.09x) --
+# an order of magnitude fewer parameters, should be noticeably faster per
+# epoch on top of the larger batch cutting the number of steps/epoch by
+# ~8.5x.
 exp_dir: euler_multi_quadrants_openBC
 train_files:
   - euler_multi_quadrants_openBC/data/train/euler_multi_quadrants_openBC_gamma_1.4_Dry_air_20_chunk_0.hdf5
@@ -36,10 +38,10 @@ noise_sampling_coeff: 0.3
 # Fresh run (no name_weights_to_load), full epoch budget rather than a
 # resume's remaining-budget trick.
 num_epochs: 300
-batch_size: 16   # was 4 -- the 512x512x4 fields at batch=4 were very
-                 # likely leaving the GPU underused; try this first, raise
-                 # further if nvidia-smi still shows headroom and memory
-                 # allows it.
+batch_size: 34   # was 4 -- the 512x512x4 fields at batch=4 were very
+                 # likely leaving the GPU underused; bumped further per
+                 # user's own check that this fits in memory on the target
+                 # GPU.
 num_workers: 2
 loss_score: mse
 loss_cat: cross_entropy
