@@ -121,14 +121,6 @@ class DiffusionTraining1D():
                                  n_cat=self.timesteps,
                                  device=self.device)
 
-        if self.name_weights_to_load is not None:
-            path_model = os.path.join(LOG_DIR, self.exp_dir, self.exp_name, "model_weights")
-            loaded_weights = torch.load(os.path.join(path_model, self.name_weights_to_load))
-            print(f"Loading weights from {self.name_weights_to_load}, epoch {loaded_weights['epoch']}")
-            self.last_epoch = loaded_weights["epoch"]
-            model.load_state_dict(loaded_weights["model_state_dict"])
-            print("Weights loaded successfully.\n")
-
         param_dict = model.count_parameters_per_module()
         self.print_line()
         print("Model parameters per module:")
@@ -141,6 +133,18 @@ class DiffusionTraining1D():
         diffusion_model = Diffusion(model=model,
                                     timesteps=self.timesteps,
                                     noise_sampling_coeff=self.noise_sampling_coeff)
+
+        if self.name_weights_to_load is not None:
+            # Checkpoints are saved from this Diffusion wrapper, not the
+            # bare backbone -- cf. the identical fix (and full explanation)
+            # in diffusion_training_euler.py/diffusion_training.py.
+            path_model = os.path.join(LOG_DIR, self.exp_dir, self.exp_name, "model_weights")
+            loaded_weights = torch.load(os.path.join(path_model, self.name_weights_to_load),
+                                        map_location=self.device)
+            print(f"Loading weights from {self.name_weights_to_load}, epoch {loaded_weights['epoch']}")
+            self.last_epoch = loaded_weights["epoch"]
+            diffusion_model.load_state_dict(loaded_weights["model_state_dict"])
+            print("Weights loaded successfully.\n")
 
         self.optimizer = Factory.get_optimizer(self.optimizer_info["type"], model.parameters(), lr=self.optimizer_info["lr"])
         self.scheduler = Factory.get_scheduler(self.scheduler_info, self.optimizer, self.num_epochs, self.datasets.n_batch_train)
