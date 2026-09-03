@@ -2,6 +2,7 @@ from training.diffusion_training_euler import DiffusionTrainingEuler
 import torch
 import numpy as np
 import random
+import sys
 import yaml
 import os
 
@@ -25,7 +26,12 @@ if __name__ == "__main__":
 
     if not os.path.exists("../runs"):
         os.makedirs("../runs")
-    with open("configs/config_command_diff_euler.yaml", "r") as f:
+    # Optional config path as the first CLI arg (same convention as
+    # main_emul_unet.py) -- lets a second, differently-sized variant (e.g.
+    # config_command_diff_euler_small.yaml) run without touching the config
+    # a currently-running job already loaded.
+    config_path = sys.argv[1] if len(sys.argv) > 1 else "configs/config_command_diff_euler.yaml"
+    with open(config_path, "r") as f:
         args = yaml.safe_load(f)
 
     set_seed(args["seed"])
