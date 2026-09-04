@@ -47,10 +47,13 @@ class_mlp_layers: [68, 136, 1000]   # 2*width, 4*width, n_cat -- FNO2D_classifie
 noise_sampling_coeff: 0.03   # was 0.3
 
 num_epochs: 300
-batch_size: 34   # same as config_command_diff_euler_small.yaml -- untested
-                 # at this width specifically (a bit more memory per sample
-                 # than the small config's width=24), lower it first if this
-                 # OOMs.
+# batch_size=34 (copied from config_command_diff_euler_small.yaml) OOM'd on
+# the first backward pass: torch.OutOfMemoryError, tried to allocate 2.26
+# GiB with 43.29/44.39 GiB already in use -- i.e. ~(43.29+2.26)/34 ~= 1.34
+# GiB/sample at this width. 24 keeps that under ~32 GiB, leaving ~12 GiB of
+# headroom for allocator fragmentation/optimizer state rather than cutting
+# it as close as the failed run did.
+batch_size: 24   # was 34 -- OOM'd, see above
 num_workers: 2
 loss_score: mse
 loss_cat: cross_entropy
