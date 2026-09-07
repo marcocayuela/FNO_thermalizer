@@ -191,7 +191,7 @@ def draw_density_snapshots(name, gt_traj, traj_no, traj_with, std, mean, out_pat
     for row, t in enumerate(snap_times):
         for col, field in enumerate([dens_gt[t], dens_no[t], dens_with[t]]):
             ax = axes[row, col]
-            ax.imshow(field, cmap="viridis", vmin=vmin, vmax=vmax, origin="lower")
+            ax.imshow(field, cmap="bwr", vmin=vmin, vmax=vmax, origin="lower")
             ax.axis("off")
             if row == 0:
                 ax.set_title(col_titles[col], fontsize=10)
