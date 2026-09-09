@@ -449,4 +449,125 @@ class DatasetManagerKS1D():
             self.n_batch_train = len(self.training_loader)
 
 
+class ParametricSequenceDataset1D(Dataset):
+    """1D counterpart of ParametricFirstSnapshot, but with SequenceDataset's
+    multi-step (x0, y) target pairs (needed for an emulator's unrolled
+    training loss, not just a diffusion corrector's single-frame input) --
+    tags each sample with the nu of the trajectory it comes from, for a
+    hyper-nu-conditioned FNO1D trained across several nu at once (cf.
+    fno/fno_1D_hyper.py, training/fno_training_1d_hyper.py)."""
 
+    def __init__(self, data, nu_value, seq_length, stride=1,
+                normalize=False, x_mean=None, x_std=None, y_mean=None, y_std=None,
+                prediction_mode="delta"):
+        self.seq = SequenceDataset(data, seq_length, stride=stride, normalize=normalize,
+                                   x_mean=x_mean, x_std=x_std, y_mean=y_mean, y_std=y_std,
+                                   prediction_mode=prediction_mode)
+        self.nu_value = float(nu_value)
+
+    def __len__(self):
+        return len(self.seq)
+
+    def __getitem__(self, idx):
+        x0, y = self.seq[idx]
+        nu = torch.tensor(self.nu_value, dtype=torch.float32)
+        return x0, y, nu
+
+
+class DatasetManagerMultiNuKS1D():
+    """Multi-nu counterpart of DatasetManagerKS1D, for training a single
+    hyper-nu-conditioned FNO1D_hyper emulator across several nu instead of
+    one model per nu -- mirrors DatasetManagerMultiRe's own directory-sweep/
+    parameter-tagging pattern, but keeps (x0, y) sequence targets (needed
+    for an emulator's unrolled training loss) instead of
+    DatasetManagerMultiRe's single-frame diffusion samples.
+
+    Points at KS_equation/nu<X>/{train_traj,test_traj}/*.h5 (h5 key "state",
+    cf. generate_ks_dataset.py) -- same data/layout as DatasetManagerKS1D,
+    just swept across nu_values instead of a single exp_dir. normalize=True
+    by default (unlike DatasetManagerKS1D's own caller, which sets
+    normalize=False because FNO1D/EmulatorFNO1D have no denormalize buffer):
+    FNO1D_hyper carries its own x_mean/x_std/y_mean/y_std buffers, so
+    dataset-side normalization and model-side denormalization stay paired
+    end to end -- see fno_1D_hyper.py's docstring for why that pairing
+    matters for KS specifically.
+    """
+
+    def __init__(self, data_rep, exp_dir, nu_values, seq_length, batch_size, num_workers,
+                ratio=1, train_frac=0.7, test_frac=0.1, stride=1, ds=1,
+                normalize=True, prediction_mode="delta"):
+        self.exp_dir = exp_dir
+        self.nu_values = [float(n) for n in nu_values]
+        self.seq_length = seq_length
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.stride = stride
+        self.ds = ds
+        self.ratio = ratio if (isinstance(ratio, int) and ratio >= 1) else 1
+        self.prediction_mode = prediction_mode
+
+        exp_root = os.path.join(data_rep, exp_dir)
+
+        # Stats pooled across ALL nu (not per-nu): a single hyper-conditioned
+        # model shares one normalization, same as DatasetManagerKS1D's own
+        # mono-nu pooling, just extended over every nu's train_traj files.
+        all_x, all_y = [], []
+        sim_files_by_nu = {}
+        for nu in self.nu_values:
+            train_dir = os.path.join(exp_root, f"nu{format_re(nu)}", "train_traj")
+            sim_files = sorted(glob.glob(os.path.join(train_dir, "*.h5")))
+            if not sim_files:
+                raise FileNotFoundError(f"No run found for nu={nu} in {train_dir}")
+            sim_files_by_nu[nu] = sim_files
+            for path in sim_files:
+                with h5py.File(path, "r") as f:
+                    data = f["state"][()][::self.ratio, ::self.ds]
+                tensor_data = torch.from_numpy(data).float()
+                all_x.append(tensor_data[:-1])
+                if self.prediction_mode == "state":
+                    all_y.append(tensor_data[1:])
+                else:
+                    all_y.append(tensor_data[1:] - tensor_data[:-1])
+
+        all_x = torch.cat(all_x, dim=0)
+        all_y = torch.cat(all_y, dim=0)
+        self.x_mean = all_x.mean(dim=(0, 1))
+        self.x_std = all_x.std(dim=(0, 1))
+        self.y_mean = all_y.mean(dim=(0, 1))
+        self.y_std = all_y.std(dim=(0, 1))
+        del all_x, all_y
+
+        datasets = []
+        for nu, sim_files in sim_files_by_nu.items():
+            for path in sim_files:
+                with h5py.File(path, "r") as f:
+                    data = f["state"][()][::self.ratio, ::self.ds]
+                datasets.append(ParametricSequenceDataset1D(
+                    data, nu, seq_length=self.seq_length, stride=self.stride,
+                    normalize=normalize, x_mean=self.x_mean, x_std=self.x_std,
+                    y_mean=self.y_mean, y_std=self.y_std, prediction_mode=self.prediction_mode,
+                ))
+
+        self.sequence_dataset = ConcatDataset(datasets)
+        N = len(self.sequence_dataset)
+        self.train_frac = train_frac
+        self.test_frac = test_frac
+        self.n_train = int(self.train_frac * N)
+        self.n_test = int(self.test_frac * N)
+        self.n_rest = N - self.n_train - self.n_test
+
+        self.training_dataset, self.testing_dataset, _ = random_split(
+            self.sequence_dataset, [self.n_train, self.n_test, self.n_rest])
+
+        self.training_loader = DataLoader(self.training_dataset, batch_size=self.batch_size, shuffle=True,
+                                          num_workers=self.num_workers, pin_memory=False,
+                                          persistent_workers=self.num_workers > 0)
+        self.testing_loader = DataLoader(self.testing_dataset, batch_size=self.batch_size, shuffle=False,
+                                         num_workers=self.num_workers, pin_memory=False,
+                                         persistent_workers=self.num_workers > 0)
+        self.n_batch_train = len(self.training_loader)
+        self.n_batch_test = len(self.testing_loader)
+
+        log_nu = np.log(np.array(self.nu_values))
+        self.param_mean = float(log_nu.mean())
+        self.param_std = float(log_nu.std() + 1e-8)
