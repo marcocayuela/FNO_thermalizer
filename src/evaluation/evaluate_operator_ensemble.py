@@ -47,14 +47,23 @@ from fno.fno_1D import FNO1D
 from fno.fno_1D_hyper import FNO1D_hyper
 from training.ks_operator_dataset import KSOperatorDataset
 from evaluation.operator_ensemble import EnsembleFNOOperator, relative_l2_error
+from evaluation.correction_eval import load_checkpoint_dict
+
+# final_model.pth only exists if a run reached its last epoch -- 13
+# sequential 250-epoch trainings (run_operator_ks.sh) or the "all"-subset
+# hyper run (run_operator_ks_hyper.sh) can plausibly exceed their sbatch
+# --time budget partway through. min_train_loss.pth is written after every
+# improving epoch, so it's the right fallback for a run that got killed
+# mid-training (cf. load_checkpoint_dict's own docstring for why this is
+# also robust to a checkpoint left truncated by an interrupted write).
+CHECKPOINT_CANDIDATES = ["final_model.pth", "min_train_loss.pth"]
 
 
 def load_operator_model(run_dir, exp_name, nu, device, k_max, width, n_layer, l=1, hidden_proj=32):
     exp_name_nu = f"{exp_name}_nu{str(nu).replace('.', 'p')}"
-    ckpt_path = os.path.join(run_dir, exp_name_nu, "model_weights", "final_model.pth")
     model = FNO1D(input_dim=1, output_dim=1, modes=k_max, width=width, l=l,
                   n_layer=n_layer, hidden_proj=hidden_proj, device=device)
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = load_checkpoint_dict(os.path.join(run_dir, exp_name_nu), CHECKPOINT_CANDIDATES, device)
     model.load_state_dict(ckpt["model_state_dict"])
     return model.to(device).float().eval()
 
@@ -65,12 +74,11 @@ def load_hyper_operator_model(run_dir, exp_name, tag, device, k_max, width, n_la
     (cf. fno_1D_hyper.py, common/param_conditioning.py) -- load_state_dict
     restores them, no need to recompute from the training subset here."""
     exp_name_tag = f"{exp_name}_{tag}"
-    ckpt_path = os.path.join(run_dir, exp_name_tag, "model_weights", "final_model.pth")
     model = FNO1D_hyper(input_dim=1, output_dim=1, modes=k_max, width=width, l=l,
                         n_layer=n_layer, hidden_proj=hidden_proj, n_basis=n_basis,
                         param_embed_dim=param_embed_dim, param_hidden_dim=param_hidden_dim,
                         param_encoder_layers=param_encoder_layers, device=device)
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = load_checkpoint_dict(os.path.join(run_dir, exp_name_tag), CHECKPOINT_CANDIDATES, device)
     model.load_state_dict(ckpt["model_state_dict"])
     return model.to(device).float().eval()
 
