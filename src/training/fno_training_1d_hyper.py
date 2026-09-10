@@ -22,7 +22,7 @@ from tqdm import tqdm
 
 from fno.fno_1D_hyper import FNO1D_hyper
 from training.dataset_manager import DatasetManagerMultiNuKS1D
-from training.factory import Factory
+from training.factory import Factory, EarlyStopping
 from training.metric_logger import MetricLogger
 
 DATA_DIR = os.getenv("DATA_DIR", "../data")
@@ -63,7 +63,7 @@ class TrainerHyperEmulator1D():
 
     def __init__(self, model, train_loader, test_loader, loss_fn, optimizer, scheduler,
                 num_epochs, device, exp_dir, exp_name, metrics, start_epoch,
-                prediction_mode="delta"):
+                prediction_mode="delta", patience=None, min_delta=1e-8):
         self.model = model
         self.optimizer = optimizer
         self.loss_fn = loss_fn
@@ -78,6 +78,7 @@ class TrainerHyperEmulator1D():
         self.metrics = metrics
         self.start_epoch = start_epoch
         self.current_epoch = start_epoch
+        self.early_stopping = EarlyStopping(patience=patience, min_delta=min_delta) if patience else None
 
     def _run_batches(self, loader, train):
         total_loss = 0.0
@@ -173,7 +174,11 @@ class TrainerHyperEmulator1D():
                            "optimizer_state_dict": self.optimizer.state_dict()},
                           os.path.join(model_dir, "min_test_loss.pth"))
 
-        torch.save({"epoch": self.num_epochs, "model_state_dict": self.model.state_dict(),
+            if self.early_stopping and self.early_stopping.step(test_metrics["loss"]):
+                print(f"Early stopping at epoch {epoch} (no improvement since {self.early_stopping.patience} epochs)")
+                break
+
+        torch.save({"epoch": epoch, "model_state_dict": self.model.state_dict(),
                    "optimizer_state_dict": self.optimizer.state_dict()},
                   os.path.join(model_dir, "final_model.pth"))
 
@@ -241,6 +246,9 @@ class FNOTrainingKS1DHyper():
         self.param_hidden_dim = self.args.get("param_hidden_dim", 64)
         self.param_encoder_layers = self.args.get("param_encoder_layers", 2)
         self.param_log_transform = self.args.get("param_log_transform", True)
+
+        self.patience = self.args.get("patience", None)
+        self.min_delta = self.args.get("min_delta", 1e-8)
 
     def make_directories(self):
         directories = [os.path.join(LOG_DIR, self.exp_dir),
@@ -313,6 +321,7 @@ class FNOTrainingKS1DHyper():
             exp_dir=self.exp_dir, exp_name=self.exp_name,
             metrics=self.metrics, start_epoch=self.last_epoch + 1 if self.name_weights_to_load is not None else 1,
             prediction_mode=self.prediction_mode,
+            patience=self.patience, min_delta=self.min_delta,
         )
         trainer.train_loop()
 

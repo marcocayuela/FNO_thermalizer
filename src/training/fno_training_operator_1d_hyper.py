@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 from fno.fno_1D_hyper import FNO1D_hyper
 from training.ks_operator_dataset import build_operator_loaders_multi_nu
-from training.factory import Factory
+from training.factory import Factory, EarlyStopping
 from training.metric_logger import MetricLogger
 
 DATA_DIR = os.getenv("DATA_DIR", "../data")
@@ -38,7 +38,7 @@ class HyperOperatorTrainerFNO1D():
     forward(u, nu) instead of forward(u))."""
 
     def __init__(self, model, train_loader, test_loader, loss_fn, optimizer, scheduler,
-                num_epochs, device, exp_dir, exp_name, start_epoch=1):
+                num_epochs, device, exp_dir, exp_name, start_epoch=1, patience=None, min_delta=1e-8):
         self.model = model
         self.train_loader = train_loader
         self.test_loader = test_loader
@@ -51,6 +51,7 @@ class HyperOperatorTrainerFNO1D():
         self.exp_name = exp_name
         self.start_epoch = start_epoch
         self.current_epoch = start_epoch
+        self.early_stopping = EarlyStopping(patience=patience, min_delta=min_delta) if patience else None
 
     def _relative_l2(self, pred, target):
         return (torch.mean((pred - target) ** 2) / torch.mean(target ** 2)) ** 0.5 * 100
@@ -98,6 +99,7 @@ class HyperOperatorTrainerFNO1D():
         logger = MetricLogger(csv_path, headers, resume=self.start_epoch > 1)
 
         min_train_loss = 1e18
+        min_test_loss = 1e18
         model_dir = os.path.join(LOG_DIR, self.exp_dir, self.exp_name, "model_weights")
 
         for epoch in range(self.start_epoch, self.num_epochs + 1):
@@ -111,13 +113,24 @@ class HyperOperatorTrainerFNO1D():
             print(tabulate([row], headers=headers, floatfmt=".5g"))
             logger.log(dict(zip(headers, row)))
 
+            if test_loss < min_test_loss:
+                min_test_loss = test_loss
+                torch.save({"epoch": epoch, "model_state_dict": self.model.state_dict(),
+                           "optimizer_state_dict": self.optimizer.state_dict()},
+                          os.path.join(model_dir, "min_test_loss.pth"))
+                print(f"Best model saved at epoch {epoch} with test loss: {test_loss:.6f}")
+
             if train_loss < min_train_loss:
                 min_train_loss = train_loss
                 torch.save({"epoch": epoch, "model_state_dict": self.model.state_dict(),
                            "optimizer_state_dict": self.optimizer.state_dict()},
                           os.path.join(model_dir, "min_train_loss.pth"))
 
-        torch.save({"epoch": self.num_epochs, "model_state_dict": self.model.state_dict(),
+            if self.early_stopping and self.early_stopping.step(test_loss):
+                print(f"Early stopping at epoch {epoch} (no improvement since {self.early_stopping.patience} epochs)")
+                break
+
+        torch.save({"epoch": epoch, "model_state_dict": self.model.state_dict(),
                    "optimizer_state_dict": self.optimizer.state_dict()},
                   os.path.join(model_dir, "final_model.pth"))
 
@@ -165,6 +178,8 @@ class OperatorTrainingKSHyper():
         self.optimizer_info = self.args["optimizer"]
         self.scheduler_info = self.args.get("scheduler")
         self.loss_name = self.args.get("loss_fn", "l1")
+        self.patience = self.args.get("patience", None)
+        self.min_delta = self.args.get("min_delta", 1e-8)
 
     def _loss_fn(self):
         return nn.L1Loss() if self.loss_name == "l1" else nn.MSELoss()
@@ -219,5 +234,6 @@ class OperatorTrainingKSHyper():
                 loss_fn=self._loss_fn(), optimizer=optimizer, scheduler=scheduler,
                 num_epochs=self.num_epochs, device=self.device,
                 exp_dir=self.exp_dir, exp_name=exp_name_tag,
+                patience=self.patience, min_delta=self.min_delta,
             )
             trainer.train_loop()
