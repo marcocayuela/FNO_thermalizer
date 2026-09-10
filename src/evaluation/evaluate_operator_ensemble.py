@@ -210,6 +210,7 @@ def main():
     subsets = {
         "pair": [nu_list.index(0.4), nu_list.index(0.9)],
         "trio": [1, 5, 10],
+        "quad": [nu_list.index(0.4), nu_list.index(0.7), nu_list.index(1.0), nu_list.index(1.3)],
         "all": list(range(len(nu_list))),
     }
 
