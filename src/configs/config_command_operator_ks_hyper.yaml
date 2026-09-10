@@ -1,0 +1,51 @@
+########### HYPER-NU OPERATOR IDENTIFICATION (KS equation) #############
+# Counterpart of config_command_operator_ks.yaml: instead of training one
+# independent FNO1D per nu (later combined post-hoc via linear regression,
+# cf. evaluation/operator_ensemble.py), trains a SINGLE FNO1D_hyper jointly
+# per subset below -- same subsets as evaluate_operator_ensemble.py's own
+# "2 models"/"3 models"/"all models" comparisons, so the two approaches
+# (post-hoc linear regression of independent models vs. one jointly-trained
+# hyper-nu model) can be compared on identical training data.
+
+seed: 42
+device: cuda
+
+exp_dir: KS_equation
+subsets:
+  pair: [0.4, 0.9]
+  trio: [0.4, 0.8, 1.3]
+  all: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
+
+# Model -- same modes/width/depth as the mono-nu operator FNO1D
+# (config_command_operator_ks.yaml); n_basis/param_* control the hyper-R
+# mechanism (cf. fno/fno_1D_hyper.py).
+k_max: 16
+width: 16
+n_fourier_layer: 3
+l: 1
+hidden_proj: 32
+
+n_basis: 4
+param_embed_dim: 32
+param_hidden_dim: 64
+param_encoder_layers: 2
+param_log_transform: true
+
+# Training -- same as config_command_operator_ks.yaml.
+num_epochs: 250
+batch_size: 20
+num_workers: 2
+loss_fn: l1
+optimizer:
+  type: adam
+  lr: 0.001
+scheduler:
+  step_size: 500
+  gamma: 0.99
+
+train_frac: 0.7
+test_frac: 0.3
+ds: 1
+
+#
+exp_name: fno_ks_operator_hyper

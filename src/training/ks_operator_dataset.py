@@ -26,7 +26,7 @@ import os
 import h5py
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
 
 
 def material_derivative(u, dt, dx):
@@ -91,3 +91,56 @@ def build_operator_loaders(data_rep, exp_dir, nu, batch_size, num_workers, ds=1,
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     test_loader = DataLoader(test_set, batch_size=max(n_test, 1), shuffle=False, num_workers=num_workers)
     return train_loader, test_loader, n_train, n_test
+
+
+class ParametricKSOperatorSnapshots(Dataset):
+    """Wraps one nu's already-loaded (u, dudt) snapshots (cf. KSOperatorDataset)
+    with an nu tag on every sample -- for a single FNO1D_hyper trained
+    jointly across several nu (cf. fno/fno_1D_hyper.py,
+    training/fno_training_operator_1d_hyper.py) instead of one FNO1D per nu."""
+
+    def __init__(self, u, dudt, nu_value):
+        self.u = u
+        self.dudt = dudt
+        self.nu_value = float(nu_value)
+
+    def __len__(self):
+        return self.u.shape[0]
+
+    def __getitem__(self, idx):
+        nu = torch.tensor(self.nu_value, dtype=torch.float32)
+        return self.u[idx], self.dudt[idx], nu
+
+
+def build_operator_loaders_multi_nu(data_rep, exp_dir, nu_values, batch_size, num_workers, ds=1,
+                                    train_frac=0.7, test_frac=0.3, seed=0, split="train_traj"):
+    """Multi-nu counterpart of build_operator_loaders -- pools every nu in
+    nu_values into one shared dataset (nu-tagged per sample), for training a
+    single hyper-nu-conditioned FNO1D_hyper. x_mean/x_std/y_mean/y_std are
+    pooled across ALL of nu_values (one shared normalization for the whole
+    model, same convention as DatasetManagerMultiNuKS1D)."""
+    exp_root = os.path.join(data_rep, exp_dir)
+    datasets = []
+    all_u, all_dudt = [], []
+    for nu in nu_values:
+        single = KSOperatorDataset(exp_root, nu, ds=ds, split=split)
+        datasets.append(ParametricKSOperatorSnapshots(single.u, single.dudt, nu))
+        all_u.append(single.u)
+        all_dudt.append(single.dudt)
+
+    all_u = torch.cat(all_u, dim=0)
+    all_dudt = torch.cat(all_dudt, dim=0)
+    x_mean, x_std = all_u.mean(), all_u.std()
+    y_mean, y_std = all_dudt.mean(), all_dudt.std()
+    del all_u, all_dudt
+
+    full = ConcatDataset(datasets)
+    N = len(full)
+    n_train = int(train_frac * N)
+    n_test = N - n_train
+    generator = torch.Generator().manual_seed(seed)
+    train_set, test_set = random_split(full, [n_train, n_test], generator=generator)
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    return train_loader, test_loader, n_train, n_test, x_mean, x_std, y_mean, y_std
