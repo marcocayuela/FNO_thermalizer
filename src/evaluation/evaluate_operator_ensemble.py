@@ -24,12 +24,21 @@ Evaluated on test_traj (held out, never trained on by any model) rather
 than the notebook's own re-use of its train+test snapshots -- see
 ks_operator_dataset.py's own split= parameter.
 
+Every figure's underlying numbers are saved alongside it as a same-named
+.npz (nu_list, per-approach error arrays, etc.) -- rsync the whole out_dir
+back and re-run this script with --replot <dir> to regenerate every PNG
+locally (no torch, no checkpoints, no mesu) if the plotting style needs a
+tweak later.
+
 Usage (on a compute node -- needs the trained checkpoints and data):
     python evaluation/evaluate_operator_ensemble.py \\
         --data_dir $DATA_DIR --exp_dir KS_equation \\
         --run_dir $LOG_DIR/KS_equation \\
         --exp_name fno_ks_operator --hyper_exp_name fno_ks_operator_hyper \\
         --out_dir evaluate_operator_ensemble
+
+Usage (locally, after rsync-ing out_dir back -- no other args needed):
+    python evaluation/evaluate_operator_ensemble.py --replot evaluate_operator_ensemble
 """
 
 import argparse
@@ -88,6 +97,30 @@ def _load_test_data(data_dir, exp_dir, nu, device):
     return ds.u.unsqueeze(-1).to(device), ds.dudt.unsqueeze(-1).to(device)  # (N, Mx, 1) each
 
 
+def plot_subset_from_arrays(nu_list, nu_error_ensemble, nu_error_unique, nu_error_hyper, subset_nus,
+                            title_suffix, out_path):
+    """Pure plotting, no torch/model involved -- reusable both right after
+    evaluate_subset() computes these arrays, and standalone from a saved
+    .npz (cf. --replot) to regenerate the figure locally without mesu."""
+    has_hyper = len(nu_error_hyper) > 0
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(nu_list, nu_error_ensemble, marker="o", label="Ensemble (linear regression)")
+    if has_hyper:
+        ax.plot(nu_list, nu_error_hyper, marker="o", label="Hyper-nu (joint training)")
+    ax.plot(nu_list, nu_error_unique, marker="o", label="Unique model (own nu)")
+    all_errs = list(nu_error_ensemble) + list(nu_error_unique) + list(nu_error_hyper)
+    ax.vlines(subset_nus, 0, max(all_errs), colors="red", linestyles="--", alpha=0.5,
+              label="nu used to build the ensemble / train the hyper model")
+    ax.set_xlabel("nu")
+    ax.set_ylabel("relative L2 error (%)")
+    ax.set_title(f"Operator reconstruction error -- {title_suffix}")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def evaluate_subset(fno_by_nu, nu_list, subset_idx, data_dir, exp_dir, device, out_path, title_suffix,
                     hyper_model=None):
     subset_models = [fno_by_nu[nu_list[i]] for i in subset_idx]
@@ -110,24 +143,41 @@ def evaluate_subset(fno_by_nu, nu_list, subset_idx, data_dir, exp_dir, device, o
                 pred_hyper = hyper_model(u, nu_tensor)
                 nu_error_hyper.append(relative_l2_error(pred_hyper, dudt).item())
 
+    # Raw numeric results saved alongside the PNG (same basename, .npz) --
+    # lets the figure be regenerated locally (plot_subset_from_arrays, no
+    # torch/model/mesu needed) if the plotting style needs tweaking later,
+    # without re-running inference.
+    npz_path = os.path.splitext(out_path)[0] + ".npz"
+    np.savez(npz_path, nu_list=np.array(nu_list), nu_error_ensemble=np.array(nu_error_ensemble),
+             nu_error_unique=np.array(nu_error_unique), nu_error_hyper=np.array(nu_error_hyper),
+             subset_nus=np.array(subset_nus), title_suffix=title_suffix)
+
+    plot_subset_from_arrays(nu_list, nu_error_ensemble, nu_error_unique, nu_error_hyper, subset_nus,
+                            title_suffix, out_path)
+    print(f"Saved {out_path} and {npz_path}  (nu used: {subset_nus})")
+    return nu_error_ensemble, nu_error_unique, nu_error_hyper
+
+
+def plot_nearest_neighbors_from_arrays(nu_list, nu_error_nn, nu_error_unique, is_extrapolation, out_path):
+    """Pure plotting counterpart of evaluate_nearest_neighbors, cf.
+    plot_subset_from_arrays's own docstring for why this is split out."""
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(nu_list, nu_error_ensemble, marker="o", label="Ensemble (linear regression)")
-    if hyper_model is not None:
-        ax.plot(nu_list, nu_error_hyper, marker="o", label="Hyper-nu (joint training)")
-    ax.plot(nu_list, nu_error_unique, marker="o", label="Unique model (own nu)")
-    all_errs = nu_error_ensemble + nu_error_unique + nu_error_hyper
-    ax.vlines(subset_nus, 0, max(all_errs), colors="red", linestyles="--", alpha=0.5,
-              label="nu used to build the ensemble / train the hyper model")
+    interp_nu = [nu for nu, e in zip(nu_list, is_extrapolation) if not e]
+    interp_err = [err for err, e in zip(nu_error_nn, is_extrapolation) if not e]
+    extrap_nu = [nu for nu, e in zip(nu_list, is_extrapolation) if e]
+    extrap_err = [err for err, e in zip(nu_error_nn, is_extrapolation) if e]
+    ax.plot(nu_list, nu_error_unique, marker="o", color="gray", alpha=0.6, label="Unique model (own nu)")
+    ax.plot(interp_nu, interp_err, marker="o", color="tab:blue", label="Nearest-2-neighbors (interpolation)")
+    ax.plot(extrap_nu, extrap_err, marker="s", color="tab:red", linestyle="none",
+           label="Nearest-2-neighbors (extrapolation, at the ends)")
     ax.set_xlabel("nu")
     ax.set_ylabel("relative L2 error (%)")
-    ax.set_title(f"Operator reconstruction error -- {title_suffix}")
+    ax.set_title("Operator reconstruction error -- nearest-2-neighbors ensemble (adaptive per target nu)")
     ax.legend()
     ax.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
-    print(f"Saved {out_path}  (nu used: {subset_nus})")
-    return nu_error_ensemble, nu_error_unique, nu_error_hyper
 
 
 def evaluate_nearest_neighbors(fno_by_nu, nu_list, data_dir, exp_dir, device, out_path):
@@ -157,32 +207,46 @@ def evaluate_nearest_neighbors(fno_by_nu, nu_list, data_dir, exp_dir, device, ou
             pred_unique = fno_by_nu[nu](u)
             nu_error_unique.append(relative_l2_error(pred_unique, dudt).item())
 
-    fig, ax = plt.subplots(figsize=(9, 5))
-    interp_nu = [nu for nu, e in zip(nu_list, is_extrapolation) if not e]
-    interp_err = [err for err, e in zip(nu_error_nn, is_extrapolation) if not e]
-    extrap_nu = [nu for nu, e in zip(nu_list, is_extrapolation) if e]
-    extrap_err = [err for err, e in zip(nu_error_nn, is_extrapolation) if e]
-    ax.plot(nu_list, nu_error_unique, marker="o", color="gray", alpha=0.6, label="Unique model (own nu)")
-    ax.plot(interp_nu, interp_err, marker="o", color="tab:blue", label="Nearest-2-neighbors (interpolation)")
-    ax.plot(extrap_nu, extrap_err, marker="s", color="tab:red", linestyle="none",
-           label="Nearest-2-neighbors (extrapolation, at the ends)")
-    ax.set_xlabel("nu")
-    ax.set_ylabel("relative L2 error (%)")
-    ax.set_title("Operator reconstruction error -- nearest-2-neighbors ensemble (adaptive per target nu)")
-    ax.legend()
-    ax.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
-    plt.close()
-    print(f"Saved {out_path}")
+    npz_path = os.path.splitext(out_path)[0] + ".npz"
+    np.savez(npz_path, nu_list=np.array(nu_list), nu_error_nn=np.array(nu_error_nn),
+             nu_error_unique=np.array(nu_error_unique), is_extrapolation=np.array(is_extrapolation))
+
+    plot_nearest_neighbors_from_arrays(nu_list, nu_error_nn, nu_error_unique, is_extrapolation, out_path)
+    print(f"Saved {out_path} and {npz_path}")
     return nu_error_nn, nu_error_unique
+
+
+def replot_from_dir(out_dir):
+    """Regenerates every PNG in out_dir from its sibling .npz -- no torch,
+    no model checkpoints, no data_dir needed. Run this locally (e.g. after
+    rsync-ing out_dir back from mesu) to restyle a plot without redoing any
+    inference."""
+    import glob
+    npz_paths = sorted(glob.glob(os.path.join(out_dir, "*.npz")))
+    if not npz_paths:
+        print(f"No .npz files found in {out_dir}")
+        return
+    for npz_path in npz_paths:
+        out_path = os.path.splitext(npz_path)[0] + ".png"
+        data = np.load(npz_path, allow_pickle=True)
+        if "nu_error_nn" in data:
+            plot_nearest_neighbors_from_arrays(
+                data["nu_list"], data["nu_error_nn"], data["nu_error_unique"], data["is_extrapolation"], out_path)
+        else:
+            plot_subset_from_arrays(
+                data["nu_list"], data["nu_error_ensemble"], data["nu_error_unique"], data["nu_error_hyper"],
+                data["subset_nus"], str(data["title_suffix"]), out_path)
+        print(f"Replotted {out_path} from {npz_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data_dir", required=True)
+    parser.add_argument("--replot", metavar="DIR",
+                        help="Skip all inference: just regenerate every PNG in DIR from its .npz sibling "
+                             "(e.g. after rsync-ing results back from mesu) and exit. All other args ignored.")
+    parser.add_argument("--data_dir")
     parser.add_argument("--exp_dir", default="KS_equation")
-    parser.add_argument("--run_dir", required=True, help="$LOG_DIR/KS_equation-style root")
+    parser.add_argument("--run_dir", help="$LOG_DIR/KS_equation-style root (required unless --replot)")
     parser.add_argument("--exp_name", default="fno_ks_operator")
     parser.add_argument("--hyper_exp_name", default="fno_ks_operator_hyper",
                         help="Set to '' to skip the hyper-nu comparison (e.g. if not trained yet)")
@@ -193,6 +257,13 @@ def main():
     parser.add_argument("--n_fourier_layer", type=int, default=3)
     parser.add_argument("--out_dir", default="evaluate_operator_ensemble")
     args = parser.parse_args()
+
+    if args.replot:
+        replot_from_dir(args.replot)
+        return
+
+    if not args.data_dir or not args.run_dir:
+        parser.error("--data_dir and --run_dir are required unless --replot is given")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.out_dir, exist_ok=True)
