@@ -12,13 +12,12 @@ domain_size:
   - 1
   - 1
 ratio: 1
-# Grid is 128x256 (H x W, 1:2 aspect after ds=2 downsampling at fetch time) --
-# NOT square like Kolmogorov's, so k_max_x/k_max_y are set to the same
-# fraction of each axis' own Nyquist (H/2=64, W/2=128) rather than copying
-# Kolmogorov's equal 32/32 (which would under-resolve the longer W axis at
-# only 25% of its Nyquist vs 50% for H).
-k_max_x: 32
-k_max_y: 64
+# Grid is 128x256 (H x W, 1:2 aspect after ds=2 downsampling at fetch time),
+# so equal k_max_x/k_max_y covers different Nyquist fractions per axis
+# (24/64=37.5% in x, 24/128=18.75% in y) -- accepted trade-off to keep the
+# mode count itself capped at 24 rather than matching the aspect ratio.
+k_max_x: 24
+k_max_y: 24
 l: 1
 
 # No domain padding (FNO2D's padding=0 default, never overridden by
@@ -26,14 +25,13 @@ l: 1
 # and y (boundary_conditions/{x,y}_periodic in the source HDF5), same
 # assumption FNO2D's plain spectral convolution already makes.
 
-# Model parameters -- width narrowed (vs Kolmogorov's 32) to keep total
-# params ~2M despite the doubled k_max_y above (param count scales with
-# width^2 * k_max_x * k_max_y).
+# Model parameters -- width set to keep total params ~2M given the modes
+# above (param count scales with width^2 * k_max_x * k_max_y).
 n_fourier_layer: 3
-width: 13
+width: 24
 hidden_proj: 64
 mlp: true
-layers_mlp: [13,26,13]
+layers_mlp: [24,48,24]
 tau: 0.00001
 
 
