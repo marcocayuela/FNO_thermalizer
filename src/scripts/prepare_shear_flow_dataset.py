@@ -44,17 +44,20 @@ def _remote_file(split, re_tag, schmidt_tag):
     return fsspec.open(url, "rb")
 
 
-def extract_trajectories(split, re_tag, schmidt_tag, n, ds):
-    """Returns a (n, T, H, W, 4) float32 array: tracer, pressure, u, v --
-    downloads only the byte range covering the first n trajectories (cf.
-    module docstring)."""
+def extract_trajectories(split, re_tag, schmidt_tag, start, n, ds):
+    """Returns a (n-start, T, H, W, 4) float32 array: tracer, pressure, u, v --
+    downloads only the byte range covering trajectories [start, n) (cf.
+    module docstring) -- a contiguous mid-array slice is just as efficient a
+    single byte-range read as [:n] on this non-chunked leading axis, so a
+    later re-run asking for more trajectories only pays for the new ones
+    instead of re-fetching [0, start) again."""
     with _remote_file(split, re_tag, schmidt_tag) as f:
         with h5py.File(f, "r") as hf:
-            tracer = hf["t0_fields/tracer"][:n, :, ::ds, ::ds]
-            pressure = hf["t0_fields/pressure"][:n, :, ::ds, ::ds]
-            velocity = hf["t1_fields/velocity"][:n, :, ::ds, ::ds, :]  # (n, T, H, W, 2)
+            tracer = hf["t0_fields/tracer"][start:n, :, ::ds, ::ds]
+            pressure = hf["t0_fields/pressure"][start:n, :, ::ds, ::ds]
+            velocity = hf["t1_fields/velocity"][start:n, :, ::ds, ::ds, :]  # (n-start, T, H, W, 2)
     return np.stack([tracer, pressure], axis=-1).astype(np.float32), velocity.astype(np.float32)
-    # (n,T,H,W,2) tracer+pressure, (n,T,H,W,2) u,v -- concatenated by the caller
+    # (n-start,T,H,W,2) tracer+pressure, (n-start,T,H,W,2) u,v -- concatenated by the caller
 
 
 def main():
@@ -75,22 +78,34 @@ def main():
         split_dir = os.path.join(root, out_split)
         os.makedirs(split_dir, exist_ok=True)
 
-        print(f"- fetching {n} trajectories from {split} (nu={args.re}, Schmidt={args.schmidt})...", flush=True)
-        scalars, velocity = extract_trajectories(split, args.re, args.schmidt, n, args.ds)
-        combined = np.concatenate([scalars, velocity], axis=-1)  # (n, T, H, W, 4): tracer, pressure, u, v
+        # Resume from however many sim<N>.h5 already exist (sim1..simK
+        # contiguous) rather than re-downloading them -- lets a later call
+        # asking for more trajectories only fetch the new ones.
+        start = 0
+        if not args.overwrite:
+            while os.path.exists(os.path.join(split_dir, f"sim{start + 1}.h5")):
+                start += 1
 
-        for i in range(n):
+        if start >= n:
+            print(f"- {split}: already have {start} >= {n} requested trajectories, skipping", flush=True)
+            continue
+
+        print(f"- fetching trajectories [{start}, {n}) from {split} (nu={args.re}, Schmidt={args.schmidt})...", flush=True)
+        scalars, velocity = extract_trajectories(split, args.re, args.schmidt, start, n, args.ds)
+        combined = np.concatenate([scalars, velocity], axis=-1)  # (n-start, T, H, W, 4): tracer, pressure, u, v
+
+        for i in range(start, n):
             out_path = os.path.join(split_dir, f"sim{i + 1}.h5")
             if os.path.exists(out_path) and not args.overwrite:
                 print(f"  {out_path} already exists, skipping (--overwrite to force)", flush=True)
                 continue
             with h5py.File(out_path, "w") as f:
-                f.create_dataset("velocity_field", data=combined[i])
+                f.create_dataset("velocity_field", data=combined[i - start])
                 f.attrs["reynolds"] = args.re
                 f.attrs["schmidt"] = args.schmidt
                 f.attrs["field_order"] = "tracer,pressure,u,v"
                 f.attrs["ds"] = args.ds
-            print(f"  saved {combined[i].shape} to {out_path}", flush=True)
+            print(f"  saved {combined[i - start].shape} to {out_path}", flush=True)
 
     print(f"Done. Dataset at {root}/", flush=True)
 

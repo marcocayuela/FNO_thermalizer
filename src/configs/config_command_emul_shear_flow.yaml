@@ -12,16 +12,28 @@ domain_size:
   - 1
   - 1
 ratio: 1
+# Grid is 128x256 (H x W, 1:2 aspect after ds=2 downsampling at fetch time) --
+# NOT square like Kolmogorov's, so k_max_x/k_max_y are set to the same
+# fraction of each axis' own Nyquist (H/2=64, W/2=128) rather than copying
+# Kolmogorov's equal 32/32 (which would under-resolve the longer W axis at
+# only 25% of its Nyquist vs 50% for H).
 k_max_x: 32
-k_max_y: 32
+k_max_y: 64
 l: 1
 
-# Model parameters
+# No domain padding (FNO2D's padding=0 default, never overridden by
+# fno_training.py) -- correct here since shear_flow is periodic in both x
+# and y (boundary_conditions/{x,y}_periodic in the source HDF5), same
+# assumption FNO2D's plain spectral convolution already makes.
+
+# Model parameters -- width narrowed (vs Kolmogorov's 32) to keep total
+# params ~2M despite the doubled k_max_y above (param count scales with
+# width^2 * k_max_x * k_max_y).
 n_fourier_layer: 3
-width: 32
+width: 13
 hidden_proj: 64
 mlp: true
-layers_mlp: [32,64,32]
+layers_mlp: [13,26,13]
 tau: 0.00001
 
 
@@ -33,7 +45,7 @@ num_workers: 2
 loss_fn: mse
 optimizer:
   type: adam
-  lr: 0.001
+  lr: 0.003
   wd: 100.
 scheduler:
   name: cosine_annealing
