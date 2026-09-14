@@ -68,10 +68,16 @@ def main():
     parser.add_argument("--n_train", type=int, default=8, help="<=32 available in the train file")
     parser.add_argument("--n_test", type=int, default=4, help="<=4 available in the test file")
     parser.add_argument("--ds", type=int, default=2, help="Spatial downsample stride (256x512 -> 128x256 at ds=2)")
+    parser.add_argument("--tag_suffix", default="",
+                        help="Appended to the Re<X>_Sc<Y> directory name -- use to keep a "
+                        "differently-downsampled fetch (e.g. --ds 1 for native resolution) "
+                        "from colliding with an existing one under the default tag, since "
+                        "the resume-from-existing-files logic below only checks filenames, "
+                        "not what ds they were saved with.")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
-    tag = f"Re{args.re}_Sc{args.schmidt}"
+    tag = f"Re{args.re}_Sc{args.schmidt}{args.tag_suffix}"
     root = os.path.join(args.out_dir, "shear_flow", tag)
 
     for split, out_split, n in (("train", "train_traj", args.n_train), ("test", "test_traj", args.n_test)):

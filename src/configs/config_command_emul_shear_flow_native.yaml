@@ -1,0 +1,71 @@
+########### EMULATOR (shear_flow, native resolution) #############
+seed: 42
+device: cuda
+
+# Same (Reynolds, Schmidt) as config_command_emul_shear_flow.yaml, but at the
+# source dataset's own 256x512 resolution (ds=1 at fetch time -- cf.
+# scripts/prepare_shear_flow_dataset.py --ds 1 --tag_suffix _native) instead
+# of the downsampled 128x256 -- test of whether the ds=2 downsampling was
+# destroying fine tracer-filament/shear-layer structure the emulator needs.
+exp_dir: shear_flow/Re5e4_Sc1e0_native
+input_dim: 4
+output_dim: 4
+n_dim: 2
+domain_size:
+  - 1
+  - 1
+ratio: 1
+# Same mode cap (<=24) as the downsampled config, now an even smaller
+# fraction of each axis' Nyquist (256/2=128, 512/2=256) -- this run isolates
+# whether more INPUT resolution helps (finer grid for the pointwise branch
+# and for measuring/targeting the delta) even with the same spectral budget.
+k_max_x: 24
+k_max_y: 24
+l: 1
+
+# No domain padding (FNO2D's padding=0 default, never overridden by
+# fno_training.py) -- shear_flow is periodic in both x and y.
+
+# Model parameters -- same as the downsampled config (~2M params, param
+# count doesn't depend on input resolution, only on width/k_max/l).
+n_fourier_layer: 3
+width: 24
+hidden_proj: 64
+mlp: true
+layers_mlp: [24,48,24]
+tau: 0.00001
+
+
+# Training parameters
+num_epochs: 500
+seq_length: 5
+# Halved vs the downsampled config's 64 -- native resolution is 4x more
+# pixels per sample (256x512 vs 128x256), quartered here instead of full
+# 1/4 to leave some headroom rather than cutting batch_size to 16.
+batch_size: 32
+num_workers: 2
+loss_fn: mse
+optimizer:
+  type: adam
+  lr: 0.003
+  wd: 100.
+scheduler:
+  name: cosine_annealing
+  T_max: 500
+  eta_min: 0.00001
+metrics:
+  - rmse
+  - mae
+  - relative_rmse # relative rmse
+  - relative_mae # relative l1 norm
+
+train_frac: 0.6
+test_frac: 0.1
+stride: 5
+# Native resolution -- no downsampling at fetch time (ds=1) and none here.
+ds: 1
+
+
+#
+exp_name: exp_shear_flow_Re5e4_Sc1e0_native
+name_weigths_to_load: null
