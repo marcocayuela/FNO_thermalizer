@@ -162,7 +162,16 @@ class DatasetManagerMulti():
         else:
             self.ratio = ratio  
 
-        if self.exp_dir == "kolmogorov/Re34" or self.exp_dir == "kolmogorov/Re90":
+        # Originally gated to the two Kolmogorov exp_dirs that existed when
+        # this was written -- the branch itself doesn't reference Kolmogorov
+        # anywhere (generic "velocity_field" key, channel-count-agnostic),
+        # so any exp_dir under kolmogorov/ or shear_flow/ (cf.
+        # KS_equation-style prepare_shear_flow_dataset.py, same h5 layout)
+        # goes through it. Falling through this check silently leaves
+        # self.training_loader as None with no error -- extend it rather
+        # than relax it to "anything goes" if a genuinely different h5
+        # layout is added later.
+        if self.exp_dir.startswith("kolmogorov/") or self.exp_dir.startswith("shear_flow/"):
 
             data_dir = os.path.join(data_rep, self.exp_dir, "train_traj") ### NAME OF THE FOLDER CONTAINING THE TRAINING SIMULATIONS
 

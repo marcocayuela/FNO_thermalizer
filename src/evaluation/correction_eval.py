@@ -442,10 +442,15 @@ def relative_l2_curve(pred, gt):
     return (diff.norm(dim=1) / (ref.norm(dim=1) + 1e-8)).numpy()
 
 
-def vorticity(velocity_field):
-    """velocity_field : (..., H, W, 2) -> (..., H, W)"""
-    u = velocity_field[..., 0]
-    v = velocity_field[..., 1]
+def vorticity(velocity_field, velocity_channels=(0, 1)):
+    """velocity_field : (..., H, W, C) -> (..., H, W). velocity_channels
+    selects (u, v) out of C -- (0, 1) by default (Kolmogorov's own 2-channel
+    field, u and v the only channels), pass e.g. (2, 3) for a field with
+    other channels ahead of (u, v) (cf. shear_flow's own tracer, pressure,
+    u, v ordering, prepare_shear_flow_dataset.py)."""
+    iu, iv = velocity_channels
+    u = velocity_field[..., iu]
+    v = velocity_field[..., iv]
     du_dy = np.gradient(u, axis=-1)
     dv_dx = np.gradient(v, axis=-2)
     return dv_dx - du_dy
@@ -463,18 +468,21 @@ def kinetic_energy_curve(traj):
 # compte c'est de savoir si la trajectoire reste sur le bon attracteur,
 # statistiquement, pas si elle suit le meme chemin precis.
 
-def compute_dissipation_curve(traj, nu=1 / 90):
+def compute_dissipation_curve(traj, nu=1 / 90, velocity_channels=(0, 1)):
     """
-    traj : (T, H, W, 2) (u, v). Retourne D(t), (T,) -- dissipation visqueuse
-    moyenne spatiale, nu*mean(ux^2+uy^2+vx^2+vy^2).
+    traj : (T, H, W, C), (u, v) at velocity_channels (default (0, 1), cf.
+    vorticity()'s own docstring for the shear_flow (2, 3) case). Retourne
+    D(t), (T,) -- dissipation visqueuse moyenne spatiale,
+    nu*mean(ux^2+uy^2+vx^2+vy^2).
     """
     traj_np = traj.numpy() if torch.is_tensor(traj) else traj
     T, H, W, _ = traj_np.shape
+    iu, iv = velocity_channels
     dx = 2 * np.pi / H
     dy = 2 * np.pi / W
     D = np.zeros(T)
     for t in range(T):
-        u, v = traj_np[t, ..., 0], traj_np[t, ..., 1]
+        u, v = traj_np[t, ..., iu], traj_np[t, ..., iv]
         ux = np.gradient(u, dx, axis=0, edge_order=2)
         uy = np.gradient(u, dy, axis=1, edge_order=2)
         vx = np.gradient(v, dx, axis=0, edge_order=2)
@@ -492,13 +500,16 @@ def time_delay_embedding(x, tau, n_delays):
     return embedded
 
 
-def build_background_attractor(data_dir, exp_dir, ds, tau=8, n_delays=2):
+def build_background_attractor(data_dir, exp_dir, ds, tau=8, n_delays=2, velocity_channels=(0, 1)):
     """
     Charge toutes les trajectoires d'entrainement disponibles (train_traj/*.h5),
     calcule leur dissipation, les embed en delai temporel -- nuage de fond
     representant l'attracteur statistique "vrai", pour comparer visuellement
     la trajectoire d'un modele (embedding en delai temporel de sa propre
     dissipation) sans dependre d'une correspondance ponctuelle avec le GT.
+
+    velocity_channels: cf. vorticity()'s own docstring -- pass e.g. (2, 3)
+    for shear_flow's tracer,pressure,u,v ordering.
     """
     train_dir = os.path.join(data_dir, exp_dir, "train_traj")
     sim_files = sorted(f for f in os.listdir(train_dir) if f.endswith(".h5"))
@@ -506,23 +517,26 @@ def build_background_attractor(data_dir, exp_dir, ds, tau=8, n_delays=2):
     for fname in sim_files:
         with h5py.File(os.path.join(train_dir, fname), "r") as f:
             data = f["velocity_field"][()][:, ::ds, ::ds]
-        D = compute_dissipation_curve(data)
+        D = compute_dissipation_curve(data, velocity_channels=velocity_channels)
         all_points.append(time_delay_embedding(D, tau=tau, n_delays=n_delays))
     X = np.vstack(all_points)
     return X[40:, 0], X[40:, 1]  # (Xp, Yp), memes conventions que scale_separation.ipynb
 
 
-def compute_classical_energy_spectrum(u):
+def compute_classical_energy_spectrum(u, velocity_channels=(0, 1)):
     """
-    u : ndarray (T, H, W, 2). Retourne (k_vals, E_k) moyennes sur T.
-    Repris de notebooks/FNO_results.ipynb.
+    u : ndarray (T, H, W, C). Retourne (k_vals, E_k) moyennes sur T.
+    Repris de notebooks/FNO_results.ipynb. velocity_channels: cf.
+    vorticity()'s own docstring -- pass e.g. (2, 3) for shear_flow's
+    tracer,pressure,u,v ordering.
     """
     tsteps, nx, ny, _ = u.shape
+    iu, iv = velocity_channels
     E_k_sum = None
 
     for t in range(tsteps):
-        ux = u[t, :, :, 0]
-        uy = u[t, :, :, 1]
+        ux = u[t, :, :, iu]
+        uy = u[t, :, :, iv]
 
         uxf = np.fft.fft2(ux)
         uyf = np.fft.fft2(uy)
