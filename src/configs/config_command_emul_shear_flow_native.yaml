@@ -39,10 +39,12 @@ tau: 0.00001
 # Training parameters
 num_epochs: 500
 seq_length: 5
-# Halved vs the downsampled config's 64 -- native resolution is 4x more
-# pixels per sample (256x512 vs 128x256), quartered here instead of full
-# 1/4 to leave some headroom rather than cutting batch_size to 16.
-batch_size: 32
+# batch_size=32 CUDA-OOM'd on a 44GB GPU (43.6/44.4GB used) -- the 5-step
+# autoregressive unroll in Trainer.train_loop() keeps all 5 forward passes'
+# activations alive for backprop (no detaching between steps), which at
+# native resolution (4x the pixels of the ds=2 config) multiplies fast.
+# Dropped to 8, leaving real headroom rather than inching down.
+batch_size: 8
 num_workers: 2
 loss_fn: mse
 optimizer:

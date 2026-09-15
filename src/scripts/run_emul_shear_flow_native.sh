@@ -17,6 +17,9 @@ rsync -av $STORE/data/shear_flow/ $SCRATCH/data/shear_flow
 export DATA_DIR=$SCRATCH/data/
 export LOG_DIR=$SCRATCH/fno/runs/
 export PYTHONPATH="$PYTHONPATH:$(pwd)"
+# Safety net against allocator fragmentation on top of the batch_size cut in
+# config_command_emul_shear_flow_native.yaml (cf. the CUDA OOM this run hit).
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 python entrypoints/main_emul_shear_flow_native.py
 source deactivate
