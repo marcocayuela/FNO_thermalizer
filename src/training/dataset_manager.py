@@ -204,6 +204,13 @@ class DatasetManagerMulti():
 
                 y_mean = all_y.mean(dim=(0,1,2))
                 y_std = all_y.std(dim=(0,1,2))
+                # Never used again after the stats above -- each sim_file is
+                # about to be re-read into the SequenceDatasets below anyway,
+                # so holding onto these concatenated copies only doubles peak
+                # memory for no benefit (became OOM-fatal on shear_flow's
+                # native-resolution variant: ~25GB retained here on top of
+                # the ~13GB the SequenceDatasets themselves need).
+                del all_x, all_y
                 for sim_file in simulation_files:
                     with h5py.File(sim_file, "r") as f:
                         data = f["velocity_field"][()][::self.ratio,::self.ds, ::self.ds]

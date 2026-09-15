@@ -2,6 +2,7 @@
 
 #SBATCH -p gpu
 #SBATCH --time=24:00:00
+#SBATCH --mem=64G
 #SBATCH -J shear_flow_Re5e4_Sc1e0_native
 #SBATCH -o /scratch/cayuelam/logs/shear_flow/%x_%j.out
 
